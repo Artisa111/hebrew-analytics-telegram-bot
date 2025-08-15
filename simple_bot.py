@@ -20,6 +20,7 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
+from pdf_report import generate_hebrew_pdf_report
 
 # Setup logging
 logging.basicConfig(
@@ -64,6 +65,7 @@ class SimpleHebrewBot:
             ['📊 ניתוח נתונים'],
             ['📈 תרשימים'],
             ['💡 תובנות והמלצות'],
+            ['📄 דוח PDF'],
             ['📁 העלאת קובץ'],
             ['❓ עזרה']
         ]
@@ -229,6 +231,54 @@ class SimpleHebrewBot:
         
         elif text == '💡 תובנות והמלצות':
             await self.handle_insights(update, context)
+
+        elif text == '📄 דוח PDF':
+            # Generate a PDF report using current analysis and charts
+            if not self.has_data(user_id):
+                await update.message.reply_text("❌ אין נתונים לדוח! שלח קובץ תחילה.")
+                return
+            await update.message.reply_text("🖨️ יוצר דוח PDF בעברית…")
+            try:
+                df = self.user_data[user_id]['data']
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                analysis_results = {
+                    'basic_info': {
+                        'shape': df.shape,
+                        'memory_usage': df.memory_usage(deep=True).sum(),
+                        'null_counts': df.isnull().sum().to_dict(),
+                    }
+                }
+                # quick top correlations for report
+                if len(numeric_cols) > 1:
+                    analysis_results['correlation_matrix'] = df[numeric_cols].corr()
+                # reuse last charts if exist; otherwise, build minimal hist for first numeric
+                chart_dir = os.path.join(os.getcwd(), 'temp_charts')
+                chart_files = []
+                if os.path.isdir(chart_dir):
+                    for name in os.listdir(chart_dir):
+                        if name.lower().endswith('.png'):
+                            chart_files.append(os.path.join(chart_dir, name))
+                if not chart_files and len(numeric_cols) > 0:
+                    import tempfile
+                    import matplotlib.pyplot as plt
+                    path = os.path.join(chart_dir, 'pdf_quick_hist.png')
+                    os.makedirs(chart_dir, exist_ok=True)
+                    plt.hist(df[numeric_cols[0]].dropna(), bins=25)
+                    plt.title(str(numeric_cols[0]))
+                    plt.savefig(path, dpi=200)
+                    plt.close()
+                    chart_files.append(path)
+
+                out_path = os.path.join(os.getcwd(), 'analysis_report.pdf')
+                pdf_path = generate_hebrew_pdf_report(analysis_results, chart_files, out_path)
+                if pdf_path and os.path.exists(pdf_path):
+                    with open(pdf_path, 'rb') as f:
+                        await context.bot.send_document(chat_id=update.effective_chat.id, document=f, filename=os.path.basename(pdf_path), caption='דוח PDF הוכן בהצלחה')
+                else:
+                    await update.message.reply_text('❌ שגיאה ביצירת הדוח')
+            except Exception as e:
+                logger.error(f"Error sending PDF: {e}")
+                await update.message.reply_text('❌ שגיאה ביצירת הדוח')
         
         elif text == '📁 העלאת קובץ':
             await update.message.reply_text(

@@ -25,19 +25,43 @@ class HebrewPDFReport:
         self.margin = 20
     
     def setup_hebrew_support(self):
-        """הגדרת תמיכה בעברית ל-PDF"""
+        """הגדרת תמיכה בעברית ל-PDF (ניסיון לטעון פונט יוניקוד ממערכת ההפעלה)."""
         try:
-            # הגדרת פונט עברי
-            self.pdf.add_font('DejaVu', '', 'DejaVuSans.ttf', uni=True)
-            self.pdf.add_font('DejaVu', 'B', 'DejaVuSans-Bold.ttf', uni=True)
-            
-            # הגדרת כיוון טקסט מימין לשמאל
+            font_candidates = [
+                # Common Linux paths
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                # Windows Arial
+                'C:/Windows/Fonts/arial.ttf',
+                'C:/Windows/Fonts/arialbd.ttf',
+            ]
+            regular = None
+            bold = None
+            # Locate regular and bold
+            for path in font_candidates:
+                if os.path.exists(path):
+                    if path.lower().endswith('bold.ttf') or path.lower().endswith('bd.ttf'):
+                        bold = path
+                    else:
+                        regular = path if regular is None else regular
+                        if 'DejaVuSans.ttf' in path and os.path.exists(path.replace('.ttf', '-Bold.ttf')):
+                            bold = path.replace('.ttf', '-Bold.ttf')
+            if regular:
+                self.pdf.add_font('DejaVu', '', regular, uni=True)
+                if bold and os.path.exists(bold):
+                    self.pdf.add_font('DejaVu', 'B', bold, uni=True)
+                else:
+                    self.pdf.add_font('DejaVu', 'B', regular, uni=True)
+                self.pdf.set_font('DejaVu', '', 12)
+            else:
+                # Fallback to core font (might not fully support Hebrew but keeps PDF working)
+                self.pdf.set_font('Arial', '', 12)
+
             self.pdf.set_auto_page_break(auto=True, margin=15)
             self.pdf.set_margins(self.margin, self.margin, self.margin)
-            
+
         except Exception as e:
             logger.warning(f"Could not load Hebrew fonts: {e}")
-            # שימוש בפונט ברירת מחדל
             self.pdf.set_font('Arial', '', 12)
     
     def create_title_page(self, title: str, subtitle: str = None, 
