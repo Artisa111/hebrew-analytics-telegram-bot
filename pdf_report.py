@@ -12,6 +12,12 @@ from datetime import datetime
 import matplotlib.pyplot as plt
 from PIL import Image
 import io
+try:
+    import arabic_reshaper  # for proper RTL shaping (safe for Hebrew)
+    from bidi.algorithm import get_display
+except Exception:
+    arabic_reshaper = None
+    get_display = None
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +29,17 @@ class HebrewPDFReport:
         self.page_width = 210
         self.page_height = 297
         self.margin = 20
+    
+    def _rtl_text(self, text: str) -> str:
+        """Return visually-correct RTL text using bidi/arabic_reshaper if available."""
+        try:
+            s = "" if text is None else str(text)
+            if arabic_reshaper and get_display:
+                s = arabic_reshaper.reshape(s)
+                s = get_display(s)
+            return s
+        except Exception:
+            return str(text)
     
     def setup_hebrew_support(self):
         """הגדרת תמיכה בעברית ל-PDF (ניסיון לטעון פונט יוניקוד ממערכת ההפעלה)."""
@@ -124,7 +141,9 @@ class HebrewPDFReport:
                 self.pdf.add_page()
                 self.current_y = self.margin
             
-            self.pdf.text(self.margin, self.current_y, title)
+            # Right aligned for RTL
+            self.pdf.set_xy(self.margin, self.current_y)
+            self.pdf.cell(0, 10, self._rtl_text(title), align='R')
             self.current_y += 10
             
         except Exception as e:
@@ -143,14 +162,9 @@ class HebrewPDFReport:
                 self.pdf.add_page()
                 self.current_y = self.margin
             
-            # חלוקת טקסט ארוך לשורות
-            lines = self._wrap_text(text, self.page_width - 2 * self.margin)
-            
-            for line in lines:
-                self.pdf.text(self.margin, self.current_y, line)
-                self.current_y += font_size * 0.4
-            
-            self.current_y += 5
+            self.pdf.set_xy(self.margin, self.current_y)
+            self.pdf.multi_cell(0, font_size * 0.5, self._rtl_text(text), align='R')
+            self.current_y = self.pdf.get_y() + 5
             
         except Exception as e:
             logger.error(f"Error adding text: {e}")
