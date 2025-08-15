@@ -21,6 +21,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_hebrew_pdf_report
+from pdf_report import generate_complete_data_report
 
 # Setup logging
 logging.basicConfig(
