@@ -1,2 +1,1 @@
-worker: python simple_bot.py
-
+worker: python main.py
