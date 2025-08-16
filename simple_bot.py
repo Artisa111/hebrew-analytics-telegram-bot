@@ -9,6 +9,11 @@ import pandas as pd
 import numpy as np
 import tempfile
 import shutil
+
+# Enforce headless matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats

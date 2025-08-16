@@ -73,19 +73,28 @@ python-3.11.8
 2. In Project Settings → Variables add:
    - BOT_TOKEN = your Telegram token (required)
    - GOOGLE_CREDENTIALS_FILE = path to Google credentials JSON (optional, only if using Google Sheets)
-   - MPLBACKEND = Agg (recommended for headless matplotlib)
+   - MPLBACKEND = Agg (recommended for headless matplotlib, though now enforced in code)
    - PYTHONUNBUFFERED = 1 (optional, for real-time logs)
+   - REPORT_TZ = Asia/Jerusalem (optional, timezone for PDF report dates)
+   - REPORT_FONT_REGULAR = path to regular font TTF file (optional)
+   - REPORT_FONT_BOLD = path to bold font TTF file (optional)
 3. Deploy. Railway will use the included Procfile and start a Worker.
 4. Open Logs — you should see:
    - "Starting Simple Hebrew Bot..."
    - "Bot created successfully!"
+   - "Hebrew fonts loaded successfully (regular=..., bold=...)"
    - "Starting bot..."
 5. Find your bot in Telegram and send /start. Upload a CSV/Excel and try the Advanced PDF report.
 
 ### Notes for Railway
 - The bot runs via long polling — no extra web server is required.
 - Ensure BOT_TOKEN is set. Without it, the app will exit on startup.
-- If you see matplotlib backend/display errors, set MPLBACKEND=Agg.
+- Hebrew fonts are now resolved automatically in this order:
+  1. Repository-bundled fonts (assets/fonts/NotoSansHebrew-*.ttf)
+  2. Environment variable overrides (REPORT_FONT_REGULAR, REPORT_FONT_BOLD)
+  3. Common system paths (DejaVu, Liberation, Arial)
+  4. Auto-download Noto Sans Hebrew from Google Fonts at runtime
+- Matplotlib backend is enforced to 'Agg' in code for headless rendering.
 - Telegram file upload limit for bots is ~50MB.
 
 ---

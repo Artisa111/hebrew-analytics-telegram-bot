@@ -19,3 +19,8 @@ GOOGLE_CREDENTIALS_FILE=credentials.json
 # Temp Folder for Charts
 # TEMP_FOLDER=temp_charts
 
+# PDF Report Configuration
+# REPORT_TZ=Asia/Jerusalem (timezone for report dates)
+# REPORT_FONT_REGULAR=path/to/regular/font.ttf (override regular font)
+# REPORT_FONT_BOLD=path/to/bold/font.ttf (override bold font)
+
