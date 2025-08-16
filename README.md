@@ -47,15 +47,13 @@ python simple_bot.py
 2. On Railway → New Project → Deploy from GitHub → select your fork
 3. Project Settings → Variables:
    - `BOT_TOKEN` = your Telegram token
-   - (optional) Google credentials
-4. Start command:
-```
-python simple_bot.py
-```
-Alternatively, add a `Procfile` with:
+   - (optional) `GOOGLE_CREDENTIALS_FILE` = path to Google credentials JSON
+4. Deploy will automatically use the included `Procfile`:
 ```
 worker: python simple_bot.py
 ```
+
+The included `runtime.txt` specifies Python 3.11.8 for consistency.
 
 ### Notes
 - Each chart is sent with a Hebrew insight in the caption and a follow‑up “What next” message.

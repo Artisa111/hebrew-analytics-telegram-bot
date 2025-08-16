@@ -9,35 +9,33 @@ from main import HebrewDataAnalyticsBot
 def main():
     """הפונקציה הראשית להפעלת הבוט"""
     
-    # ⚠️ ВАЖНО: Замените на ваш настоящий токен от @BotFather
-    # ⚠️ IMPORTANT: Replace with your real token from @BotFather
-    BOT_TOKEN = "REDACTED"
+    # Get bot token from environment variable
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
     
-    if BOT_TOKEN == "YOUR_BOT_TOKEN_HERE" or BOT_TOKEN == "":
-        print("❌ ОШИБКА: Установите ваш токен бота в переменной BOT_TOKEN!")
-        print("📱 Получите токен у @BotFather в Telegram")
-        print("🔧 Отредактируйте файл run_bot.py и вставьте токен")
+    if not BOT_TOKEN:
+        print("❌ ERROR: BOT_TOKEN environment variable not set!")
+        print("📱 Get your token from @BotFather in Telegram")
+        print("🔧 Set the BOT_TOKEN environment variable:")
+        print("   export BOT_TOKEN='your_bot_token_here'  # Linux/Mac")
+        print("   $env:BOT_TOKEN='your_bot_token_here'    # Windows PowerShell")
         return
     
     try:
-        print("🚀 Запускаю бота...")
-        print("📱 Токен установлен, создаю экземпляр бота...")
+        print("🚀 Starting the bot...")
+        print("📱 Token loaded from environment, creating bot instance...")
         
-        # Устанавливаем токен в переменные окружения
-        os.environ['BOT_TOKEN'] = BOT_TOKEN
-        
-        # Создаем и запускаем бота
+        # Create and run the bot
         bot = HebrewDataAnalyticsBot(bot_token=BOT_TOKEN)
-        print("✅ Бот создан успешно!")
-        print("🔄 Запускаю бота...")
-        print("📱 Теперь найдите бота в Telegram и отправьте /start")
+        print("✅ Bot created successfully!")
+        print("🔄 Starting the bot...")
+        print("📱 Now find the bot in Telegram and send /start")
         
-        # Запускаем бота
+        # Run the bot
         bot.run()
         
     except Exception as e:
-        print(f"❌ Ошибка при запуске: {e}")
-        print("🔧 Проверьте настройки и попробуйте снова")
+        print(f"❌ Error starting the bot: {e}")
+        print("🔧 Check your settings and try again")
 
 if __name__ == "__main__":
     main()

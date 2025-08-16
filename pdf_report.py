@@ -996,3 +996,19 @@ def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0,
     except Exception as e:
         logger.error(f"Error analyzing Excel file: {e}")
         return None
+
+
+def generate_hebrew_pdf_report(df: pd.DataFrame, output_path: str = "hebrew_report.pdf", include_charts: bool = True) -> str:
+    """
+    Wrapper function for backward compatibility
+    Delegates to generate_complete_data_report for Hebrew PDF generation
+    
+    Args:
+        df: DataFrame with data to analyze
+        output_path: Output PDF path
+        include_charts: Whether to include charts
+        
+    Returns:
+        str: Path to generated PDF report
+    """
+    return generate_complete_data_report(df, output_path, include_charts=include_charts)
