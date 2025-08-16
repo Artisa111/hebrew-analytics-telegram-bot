@@ -8,6 +8,7 @@ __pycache__/
 *.db
 /temp_charts/
 /.env
+.env.*
 /credentials.json
 .DS_Store
 Thumbs.db
