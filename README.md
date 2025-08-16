@@ -88,6 +88,26 @@ python-3.11.8
 - If you see matplotlib backend/display errors, set MPLBACKEND=Agg.
 - Telegram file upload limit for bots is ~50MB.
 
+### Hebrew PDF Font Resolution
+The PDF report system uses a robust Hebrew font resolution mechanism with the following priority order:
+
+1. **Repository-bundled fonts**: `assets/fonts/NotoSansHebrew-Regular.ttf` and `assets/fonts/NotoSansHebrew-Bold.ttf`
+2. **Environment variable overrides**: `REPORT_FONT_REGULAR` and `REPORT_FONT_BOLD`
+3. **System font paths**: Scans common locations on Windows, macOS, and Linux for Hebrew-compatible fonts
+4. **Runtime download**: Downloads Noto Sans Hebrew fonts from GitHub if none are found
+
+### Optional Environment Variables
+- `REPORT_TZ`: Timezone for PDF report dates (default: "Asia/Jerusalem"). Example: "UTC", "America/New_York"
+- `REPORT_FONT_REGULAR`: Path to custom regular Hebrew font file
+- `REPORT_FONT_BOLD`: Path to custom bold Hebrew font file
+- `MPLBACKEND`: Matplotlib backend (recommend "Agg" for headless environments like Railway)
+
+### Font Troubleshooting
+The bot logs exactly which fonts are loaded:
+- ✅ "Hebrew fonts loaded successfully (regular=..., bold=...)" - Shows actual font paths used
+- ⚠️ "Using fallback core font - Hebrew support may be limited" - Hebrew text may not display correctly
+- If fonts are missing, the system automatically downloads Noto Sans Hebrew fonts at runtime
+
 ---
 
 ## Troubleshooting

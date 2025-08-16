@@ -9,6 +9,9 @@ import pandas as pd
 import numpy as np
 import tempfile
 import shutil
+import matplotlib
+# Enforce headless backend before importing pyplot
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
@@ -286,7 +289,7 @@ class SimpleHebrewBot:
                     chart_files.append(path)
 
                 out_path = os.path.join(os.getcwd(), 'analysis_report.pdf')
-                pdf_path = generate_hebrew_pdf_report(analysis_results, chart_files, out_path)
+                pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
                 
                 if pdf_path and os.path.exists(pdf_path):
                     with open(pdf_path, 'rb') as f:
