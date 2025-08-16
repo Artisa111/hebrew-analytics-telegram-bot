@@ -15,11 +15,19 @@ def test_bot_creation():
     
     print("🔍 Testing bot creation directly...")
     
+    # Get bot token from environment variable  
+    bot_token = os.getenv('BOT_TOKEN')
+    
+    if not bot_token:
+        print("⚠️  BOT_TOKEN environment variable not set - skipping live bot test")
+        print("✅ Test completed (skipped live parts due to missing credentials)")
+        return True
+    
     try:
         from main import HebrewDataAnalyticsBot
         
         print("🔍 Creating bot instance...")
-        bot = HebrewDataAnalyticsBot(bot_token='8418603857:AAGoqw3LGd5yRggjNUiNc-4_DcWHNq2Ucdo')
+        bot = HebrewDataAnalyticsBot(bot_token=bot_token)
         print("✅ Bot instance created successfully!")
         
         print("🔍 Checking bot attributes...")

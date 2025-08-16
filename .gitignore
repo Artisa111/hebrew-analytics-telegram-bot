@@ -12,3 +12,21 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# Additional Python patterns
+*.egg-info/
+dist/
+build/
+*.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+*.pdf
+*.png
+*.jpg
+*.jpeg
+

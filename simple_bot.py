@@ -879,7 +879,17 @@ class SimpleHebrewBot:
 
 def main():
     """הפונקציה הראשית"""
-    BOT_TOKEN = "8418603857:AAGoqw3LGd5yRggjNUiNc-4_DcWHNq2Ucdo"
+    
+    # Get bot token from environment variable
+    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    
+    if not BOT_TOKEN:
+        print("❌ ERROR: BOT_TOKEN environment variable not set!")
+        print("📱 Get your token from @BotFather in Telegram")
+        print("🔧 Set the BOT_TOKEN environment variable:")
+        print("   export BOT_TOKEN='your_bot_token_here'  # Linux/Mac")
+        print("   $env:BOT_TOKEN='your_bot_token_here'    # Windows PowerShell")
+        return
     
     try:
         print("Starting Simple Hebrew Bot with Advanced PDF Generation...")

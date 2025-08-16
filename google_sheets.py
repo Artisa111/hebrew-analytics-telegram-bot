@@ -122,11 +122,8 @@ class GoogleSheetsManager:
             info = {
                 "title": sheet.title,
                 "url": sheet.url,
-                "created": sheet.created,
-                "updated": sheet.updated,
-                "permission": "read" if worksheet.is_public else "private",
-                "row_count": worksheet.row_count,
-                "col_count": worksheet.col_count
+                "row_count": getattr(worksheet, 'row_count', 0),
+                "col_count": getattr(worksheet, 'col_count', 0)
             }
             
             return info
