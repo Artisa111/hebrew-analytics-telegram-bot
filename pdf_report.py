@@ -11,6 +11,11 @@ from typing import Dict, List, Any, Optional, Union
 import logging
 import os
 from datetime import datetime
+
+# Enforce headless matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image

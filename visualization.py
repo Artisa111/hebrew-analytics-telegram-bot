@@ -3,6 +3,10 @@
 מודול הויזואליזציה - Visualization module for creating charts and graphs with Hebrew support
 """
 
+# Enforce headless matplotlib backend before importing pyplot
+import matplotlib
+matplotlib.use('Agg')
+
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd

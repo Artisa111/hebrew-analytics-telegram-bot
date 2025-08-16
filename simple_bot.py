@@ -281,7 +281,6 @@ class SimpleHebrewBot:
                             chart_files.append(os.path.join(chart_dir, name))
                 
                 if not chart_files and len(numeric_cols) > 0:
-                    import matplotlib.pyplot as plt
                     path = os.path.join(chart_dir, 'pdf_quick_hist.png')
                     os.makedirs(chart_dir, exist_ok=True)
                     plt.hist(df[numeric_cols[0]].dropna(), bins=25)

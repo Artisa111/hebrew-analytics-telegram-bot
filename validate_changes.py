@@ -49,13 +49,19 @@ def validate_code_changes():
         status = "✓" if condition else "✗"
         print(f"{status} pdf_report.py: {check_name}")
     
-    # Check simple_bot.py changes  
-    with open("simple_bot.py", "r") as f:
-        bot_content = f.read()
+    # Check matplotlib backend fixes in all relevant files
+    matplotlib_files = ['simple_bot.py', 'pdf_report.py', 'visualization.py', 'pdf_report_backup.py']
     
-    matplotlib_backend_check = "matplotlib.use('Agg')" in bot_content
-    status = "✓" if matplotlib_backend_check else "✗"
-    print(f"{status} simple_bot.py: matplotlib backend enforcement")
+    for filename in matplotlib_files:
+        if os.path.exists(filename):
+            with open(filename, 'r') as f:
+                content = f.read()
+            
+            has_backend_fix = "matplotlib.use('Agg')" in content
+            status = "✓" if has_backend_fix else "✗"
+            print(f"{status} {filename}: matplotlib backend enforcement")
+        else:
+            print(f"⚠ {filename}: file not found")
     
     return True
 
