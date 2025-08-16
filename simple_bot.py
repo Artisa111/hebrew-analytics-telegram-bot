@@ -25,11 +25,11 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_hebrew_pdf_report, generate_complete_data_report
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Initialize new logging system
+from logging_config import initialize_logging
+initialize_logging()
+
+# Get logger after initialization
 logger = logging.getLogger(__name__)
 
 # Настройка matplotlib для поддержки иврита

@@ -7,8 +7,20 @@
 import os
 from datetime import datetime
 import pytz
-import pandas as pd
 from typing import Dict, Any
+
+# Try to import pandas, but handle gracefully if not available
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    # Create a mock pandas for basic functionality
+    class MockPandas:
+        @staticmethod
+        def isna(val):
+            return val is None or str(val).lower() in ['nan', 'none', '']
+    pd = MockPandas()
 
 
 # Default language is Hebrew

@@ -4,8 +4,27 @@
 מספק ניקוי וטיפול מתקדם בנתונים מבולגנים כולל מטבעות, פורמטי מספרים ותאריכים
 """
 
-import pandas as pd
-import numpy as np
+# Try to import pandas, but handle gracefully if not available
+try:
+    import pandas as pd
+    PANDAS_AVAILABLE = True
+except ImportError:
+    PANDAS_AVAILABLE = False
+    # Create a mock pandas for basic functionality
+    class MockPandas:
+        @staticmethod
+        def isna(val):
+            return val is None or str(val).lower() in ['nan', 'none', '']
+    pd = MockPandas()
+
+# Try to import numpy, but handle gracefully if not available
+try:
+    import numpy as np
+    NUMPY_AVAILABLE = True
+except ImportError:
+    NUMPY_AVAILABLE = False
+    np = None
+
 import re
 from typing import Any, Dict, List, Optional
 import logging
@@ -17,7 +36,7 @@ warnings.filterwarnings('ignore')
 logger = logging.getLogger(__name__)
 
 
-def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+def preprocess_df(df):
     """
     עיבוד מקדים מקיף של DataFrame עם תמיכה בנתונים מבולגנים
     Comprehensive DataFrame preprocessing with support for messy data
@@ -26,9 +45,13 @@ def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
         df: Input DataFrame with potentially messy data
         
     Returns:
-        pd.DataFrame: Cleaned and processed DataFrame
+        DataFrame: Cleaned and processed DataFrame
     """
     try:
+        if not PANDAS_AVAILABLE:
+            logger.warning("Pandas not available, returning original data")
+            return df
+            
         logger.info("Starting robust data preprocessing...")
         
         # Create a copy to avoid modifying the original
@@ -55,9 +78,12 @@ def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
+def _normalize_column_names(df):
     """נרמול שמות עמודות - Normalize column names"""
     try:
+        if not PANDAS_AVAILABLE:
+            return df
+            
         # Strip whitespace and replace spaces with underscores
         df.columns = df.columns.str.strip().str.replace(' ', '_', regex=False)
         
@@ -76,9 +102,12 @@ def _normalize_column_names(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def _process_column_values(series: pd.Series, col_name: str) -> pd.Series:
+def _process_column_values(series, col_name: str):
     """עיבוד ערכים בעמודה - Process column values for numeric conversion"""
     try:
+        if not PANDAS_AVAILABLE:
+            return series
+            
         # Skip if already numeric
         if pd.api.types.is_numeric_dtype(series):
             return series
@@ -97,8 +126,11 @@ def _process_column_values(series: pd.Series, col_name: str) -> pd.Series:
         return series
 
 
-def _is_likely_numeric_column(series: pd.Series) -> bool:
+def _is_likely_numeric_column(series):
     """בדיקה האם עמודה נראית מספרית - Check if column looks numeric"""
+    if not PANDAS_AVAILABLE:
+        return False
+        
     # Sample up to 100 non-null values
     sample = series.dropna().head(100)
     if len(sample) == 0:
@@ -169,7 +201,7 @@ def _clean_numeric_string(value: str) -> str:
 def _normalize_number_format(value: str) -> str:
     """נרמול פורמט מספרים - Normalize number format"""
     # Remove any remaining non-numeric characters except . , - and whitespace
-    cleaned = re.sub(r'[^\d.,-\s]', '', value)
+    cleaned = re.sub(r'[^\d.,\-\s]', '', value)
     
     # Remove whitespace
     cleaned = cleaned.replace(' ', '')
@@ -209,7 +241,7 @@ def _normalize_number_format(value: str) -> str:
     return cleaned
 
 
-def _convert_to_numeric(series: pd.Series, col_name: str) -> pd.Series:
+def _convert_to_numeric(series, col_name: str):
     """המרת עמודה למספרית - Convert column to numeric"""
     try:
         # Clean all values
@@ -234,7 +266,7 @@ def _convert_to_numeric(series: pd.Series, col_name: str) -> pd.Series:
         return series
 
 
-def _parse_dates_columns(df: pd.DataFrame) -> pd.DataFrame:
+def _parse_dates_columns(df):
     """ניתוח עמודות תאריך - Parse date columns"""
     try:
         for col in df.columns:
@@ -246,7 +278,7 @@ def _parse_dates_columns(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def _is_likely_date_column(series: pd.Series) -> bool:
+def _is_likely_date_column(series) -> bool:
     """בדיקה האם עמודה נראית כמו תאריכים - Check if column looks like dates"""
     if pd.api.types.is_numeric_dtype(series):
         return False
@@ -281,7 +313,7 @@ def _looks_like_date(value: str) -> bool:
     return False
 
 
-def _convert_to_date(series: pd.Series, col_name: str) -> pd.Series:
+def _convert_to_date(series, col_name: str):
     """המרת עמודה לתאריכים - Convert column to dates"""
     try:
         # Try different parsing approaches with dayfirst heuristic
@@ -314,7 +346,7 @@ def _convert_to_date(series: pd.Series, col_name: str) -> pd.Series:
         return series
 
 
-def _basic_cleanup(df: pd.DataFrame) -> pd.DataFrame:
+def _basic_cleanup(df):
     """ניקוי בסיסי - Basic cleanup"""
     try:
         # Remove completely empty rows and columns
@@ -335,7 +367,7 @@ def _basic_cleanup(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
 
-def read_csv_robust(file_path: str, **kwargs) -> pd.DataFrame:
+def read_csv_robust(file_path: str, **kwargs):
     """
     קריאת CSV עם זיהוי אוטומטי של מפרידים
     Robust CSV reading with automatic delimiter detection
@@ -361,7 +393,7 @@ def read_csv_robust(file_path: str, **kwargs) -> pd.DataFrame:
         raise
 
 
-def read_excel_robust(file_path: str, **kwargs) -> pd.DataFrame:
+def read_excel_robust(file_path: str, **kwargs):
     """
     קריאת Excel מחוזקת
     Robust Excel reading

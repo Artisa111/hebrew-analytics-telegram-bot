@@ -1,0 +1,31 @@
+# Environment Variables for Railway Deployment
+# Copy these to your Railway project's Variables section
+
+# Required - Bot Configuration
+BOT_TOKEN=your_telegram_bot_token_here
+
+# Optional - Logging Configuration
+LOG_LEVEL=INFO
+LOGS_MAX_PER_SEC=100
+DISABLE_UVICORN_ACCESS_LOGS=false
+
+# Optional - Report Configuration  
+REPORT_LANG=he
+REPORT_TZ=Asia/Jerusalem
+REPORT_FONT_REGULAR=/path/to/hebrew/font/regular.ttf
+REPORT_FONT_BOLD=/path/to/hebrew/font/bold.ttf
+
+# Optional - Google Sheets (if using)
+GOOGLE_CREDENTIALS_FILE=credentials.json
+
+# Optional - Performance
+MPLBACKEND=Agg
+PYTHONUNBUFFERED=1
+
+# The following are set automatically by the new implementation:
+# - Hebrew as default language for all PDF content
+# - Rate-limited logging to stay under Railway's 500 logs/sec limit
+# - External libraries (pandas, matplotlib, etc.) set to WARNING level
+# - Robust CSV/Excel parsing with auto-delimiter detection
+# - Guaranteed report sections even with messy data
+# - Statistical summary section in Hebrew
