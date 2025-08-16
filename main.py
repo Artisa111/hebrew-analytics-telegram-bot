@@ -21,11 +21,10 @@ from data_analysis import DataAnalyzer
 from visualization import get_chart_generator
 from pdf_report import generate_hebrew_pdf_report
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Setup robust logging with rate limiting
+from logging_setup import setup_logging
+setup_logging()
+setup_logging()
 logger = logging.getLogger(__name__)
 
 class HebrewDataAnalyticsBot:

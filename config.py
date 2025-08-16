@@ -4,9 +4,22 @@
 """
 
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+# Try to load dotenv if available, otherwise continue without it
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    # dotenv not available, which is fine - we'll use environment variables directly
+    pass
+
+# Report Configuration
+REPORT_LANG = os.getenv('REPORT_LANG', 'he')  # Default to Hebrew
+REPORT_TZ = os.getenv('REPORT_TZ', 'Asia/Jerusalem')  # Default timezone
+
+# Logging Configuration
+LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO')
+LOGS_MAX_PER_SEC = int(os.getenv('LOGS_MAX_PER_SEC', '100'))  # Token bucket rate limit
 
 # Bot Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN')
@@ -45,6 +58,13 @@ HEBREW_TEXTS = {
     # PDF Report
     'generating_pdf': '📄 יוצר דוח PDF...',
     'pdf_ready': '✅ הדוח מוכן! שולח לך...',
+    'report_date': 'תאריך הדוח',
+    'data_preview': 'תצוגה מקדימה של הנתונים',
+    'missing_values': 'ערכים חסרים',
+    'no_missing_values': 'אין ערכים חסרים בנתונים',
+    'categorical_frequencies': 'תדירויות קטגוריות',
+    'numeric_distributions': 'התפלגויות מספריות',
+    'statistical_summary': 'סיכום סטטיסטי',
     
     # Google Sheets
     'enter_sheets_url': '🔗 הכנס את הקישור לגיליון Google Sheets:',
@@ -100,4 +120,26 @@ SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets.readonly',
     'https://www.googleapis.com/auth/drive.readonly'
 ]
+
+# Translation function
+def t(key: str, lang: str = None) -> str:
+    """
+    Translation function for i18n support
+    
+    Args:
+        key: Translation key
+        lang: Language code (defaults to REPORT_LANG)
+    
+    Returns:
+        Translated text or key if not found
+    """
+    if lang is None:
+        lang = REPORT_LANG
+    
+    # For now we only support Hebrew, but structure allows expansion
+    if lang == 'he':
+        return HEBREW_TEXTS.get(key, key)
+    else:
+        # Fallback to Hebrew if language not supported
+        return HEBREW_TEXTS.get(key, key)
 

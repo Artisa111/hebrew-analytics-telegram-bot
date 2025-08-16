@@ -25,11 +25,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_hebrew_pdf_report, generate_complete_data_report
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
+# Setup robust logging with rate limiting
+from logging_setup import setup_logging
+setup_logging()
 logger = logging.getLogger(__name__)
 
 # Настройка matplotlib для поддержки иврита

@@ -25,6 +25,9 @@ from bidi.algorithm import get_display
 import warnings
 import requests
 import platform
+from config import t, REPORT_TZ
+from data_preprocessing import preprocess_df
+from guaranteed_content import add_guaranteed_sections, add_statistical_summary_section
 
 warnings.filterwarnings('ignore')
 
@@ -388,7 +391,7 @@ class HebrewPDFReport:
             if date is None:
                 try:
                     # Try to use zoneinfo for proper timezone support
-                    report_tz = os.getenv('REPORT_TZ', 'Asia/Jerusalem')
+                    report_tz = REPORT_TZ
                     try:
                         from zoneinfo import ZoneInfo
                         tz = ZoneInfo(report_tz)
@@ -402,7 +405,7 @@ class HebrewPDFReport:
                     date = datetime.now().strftime("%d/%m/%Y %H:%M")
             
             self.pdf.set_font('Hebrew', '', 12)
-            date_text = f"תאריך הדוח: {date}"
+            date_text = f"{t('report_date')}: {date}"
             self._add_rtl_text(0, 140, date_text, 'C')
             
             # Decorative lines
@@ -1064,8 +1067,12 @@ class HebrewPDFReport:
                                     output_path: str = "data_analysis_report.pdf") -> str:
         """יצירת דוח מקיף מנתונים אמיתיים"""
         try:
-            # Analyze the data
-            analysis_results = self.analyze_real_data(df)
+            # Apply robust preprocessing to ensure data is always usable
+            logger.info("Applying robust data preprocessing")
+            df_processed = preprocess_df(df)
+            
+            # Analyze the processed data
+            analysis_results = self.analyze_real_data(df_processed)
             
             if 'error' in analysis_results:
                 logger.error(f"Analysis failed: {analysis_results['error']}")
@@ -1077,22 +1084,31 @@ class HebrewPDFReport:
                 subtitle="ניתוח אוטומטי מלא של מערך הנתונים"
             )
             
-            # Add table of contents
+            # Add table of contents (updated with guaranteed sections)
             self.add_section_header("תוכן עניינים", 1)
             toc_items = [
-                "1. סיכום נתונים",
-                "2. ניתוח עמודות", 
-                "3. תובנות עיקריות",
-                "4. ניתוח קורלציות",
-                "5. ניתוח ערכים חריגים",
-                "6. המלצות לשיפור",
-                "7. תרשימים וויזואליזציות"
+                f"1. {t('data_preview')}",
+                f"2. {t('missing_values')}",
+                f"3. {t('categorical_frequencies')}",
+                f"4. {t('numeric_distributions')}",
+                "5. סיכום נתונים",
+                "6. ניתוח עמודות", 
+                "7. תובנות עיקריות",
+                "8. ניתוח קורלציות",
+                "9. ניתוח ערכים חריגים",
+                "10. המלצות לשיפור",
+                "11. תרשימים וויזואליזציות",
+                f"12. {t('statistical_summary')}"
             ]
             
             for item in toc_items:
                 self.add_text(item, 12, bold=True, indent=10)
             
-            # Add content sections
+            # Add guaranteed content sections first (never empty)
+            logger.info("Adding guaranteed content sections")
+            add_guaranteed_sections(self, df_processed, "charts")
+            
+            # Add original content sections
             if 'basic_info' in analysis_results:
                 self.add_data_summary(analysis_results['basic_info'])
                 
@@ -1109,12 +1125,16 @@ class HebrewPDFReport:
                 self.add_outliers_section(analysis_results['outliers'])
             
             # Add recommendations
-            self.add_recommendations_section(analysis_results, df)
+            self.add_recommendations_section(analysis_results, df_processed)
             
             # Create and add charts
-            chart_files = self.create_visualizations(df)
+            chart_files = self.create_visualizations(df_processed)
             if chart_files:
                 self.add_charts_section(chart_files)
+            
+            # Add statistical summary at the end as required
+            logger.info("Adding statistical summary section")
+            add_statistical_summary_section(self, df_processed, "charts")
             
             # Save the report
             self.pdf.output(output_path)
@@ -1174,8 +1194,9 @@ def analyze_csv_file(csv_file_path: str, output_pdf_path: str = None) -> str:
         str: Path to generated PDF report
     """
     try:
-        # Read CSV file
-        df = pd.read_csv(csv_file_path, encoding='utf-8')
+        # Use robust CSV loading with preprocessing
+        from data_preprocessing import load_csv_robust
+        df = load_csv_robust(csv_file_path)
         
         # Set default output path if not provided
         if output_pdf_path is None:
@@ -1205,8 +1226,9 @@ def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0,
         str: Path to generated PDF report
     """
     try:
-        # Read Excel file
+        # Read Excel file and apply preprocessing
         df = pd.read_excel(excel_file_path, sheet_name=sheet_name)
+        df = preprocess_df(df)  # Apply robust preprocessing
         
         # Set default output path if not provided
         if output_pdf_path is None:
