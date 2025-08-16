@@ -1,9 +1,12 @@
 # -*- coding: utf-8 -*-
 """
 בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation
+Enhanced with preprocessing, i18n, and logging improvements
 """
 
-import logging
+# Import logging configuration first
+import logging_config
+
 import os
 import pandas as pd
 import numpy as np
@@ -23,17 +26,16 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
+
+# Import our enhanced modules
 from pdf_report import generate_hebrew_pdf_report, generate_complete_data_report
+from preprocess import preprocess_df, read_table_auto
+from i18n import t
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+# Get logger from logging_config 
+logger = logging_config.get_logger(__name__)
 
-# Настройка matplotlib для поддержки иврита
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+# Configure matplotlib through the centralized font configuration
 plt.rcParams['axes.unicode_minus'] = False
 
 class SimpleHebrewBot:
@@ -205,29 +207,26 @@ class SimpleHebrewBot:
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
     async def read_data_file(self, file_path: str, file_extension: str):
-        """קריאת קובץ נתונים"""
+        """קריאת קובץ נתונים עם preprocessing מתקדם"""
         try:
-            if file_extension == '.csv':
-                # Пробуем разные кодировки
-                encodings = ['utf-8', 'latin-1', 'cp1255', 'iso-8859-8']
-                for encoding in encodings:
-                    try:
-                        df = pd.read_csv(file_path, encoding=encoding)
-                        if isinstance(df, pd.DataFrame) and not df.empty:
-                            return df
-                    except UnicodeDecodeError:
-                        continue
+            # Use the new read_table_auto function for robust file reading
+            df = read_table_auto(file_path)
+            
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                logger.info(f"Successfully read file {file_path} with shape {df.shape}")
+                
+                # Apply preprocessing to clean and normalize the data
+                logger.info("Applying data preprocessing...")
+                preprocessed_df = preprocess_df(df)
+                
+                logger.info(f"Preprocessing completed. Final shape: {preprocessed_df.shape}")
+                return preprocessed_df
+            else:
+                logger.warning(f"Empty or invalid DataFrame from file: {file_path}")
                 return None
             
-            elif file_extension in ['.xlsx', '.xls']:
-                df = pd.read_excel(file_path)
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    return df
-            
-            return None
-            
         except Exception as e:
-            logger.error(f"Error reading file {file_path}: {e}")
+            logger.error(f"Error reading and preprocessing file {file_path}: {e}")
             return None
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):

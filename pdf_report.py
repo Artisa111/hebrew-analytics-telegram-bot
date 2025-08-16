@@ -28,10 +28,49 @@ import platform
 
 warnings.filterwarnings('ignore')
 
-# Configure matplotlib for Hebrew
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma']
-
 logger = logging.getLogger(__name__)
+
+# Configure matplotlib for Hebrew with proper font handling
+def configure_matplotlib_fonts():
+    """Configure matplotlib fonts with fallback support"""
+    try:
+        # Check for font environment variables with fallback
+        font_regular = os.getenv('REPORT_FONT_REGULAR')
+        font_bold = os.getenv('REPORT_FONT_BOLD')
+        
+        # Set font family preference order
+        font_families = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma', 'sans-serif']
+        
+        if font_regular and os.path.exists(font_regular):
+            logger.info(f"Using custom regular font: {font_regular}")
+            # Add custom font to matplotlib
+            from matplotlib.font_manager import fontManager
+            fontManager.addfont(font_regular)
+            # Get font properties to determine family name
+            import matplotlib.font_manager as fm
+            prop = fm.get_font(font_regular)
+            font_families.insert(0, prop.get_name())
+            
+        if font_bold and os.path.exists(font_bold):
+            logger.info(f"Using custom bold font: {font_bold}")
+            from matplotlib.font_manager import fontManager  
+            fontManager.addfont(font_bold)
+            
+        plt.rcParams['font.family'] = font_families
+        plt.rcParams['axes.unicode_minus'] = False
+        
+        # Ensure proper RTL text rendering
+        plt.rcParams['text.usetex'] = False
+        
+        logger.info(f"Matplotlib configured with font families: {font_families}")
+        
+    except Exception as e:
+        logger.warning(f"Error configuring matplotlib fonts, using defaults: {e}")
+        plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma', 'sans-serif']
+        plt.rcParams['axes.unicode_minus'] = False
+
+# Initialize matplotlib configuration
+configure_matplotlib_fonts()
 
 class HebrewPDFReport:
     def __init__(self):
@@ -362,9 +401,11 @@ class HebrewPDFReport:
             self.pdf.text(x, y, text)
     
     def create_title_page(self, title: str, subtitle: str = None, 
-                         company: str = "מערכת ניתוח נתונים", date: str = None):
+                         company: str = None, date: str = None):
         """יצירת דף כותרת מעוצב"""
         try:
+            from i18n import t, get_current_datetime_formatted
+            
             self.pdf.add_page()
             
             # Add company logo area (placeholder)
@@ -381,28 +422,17 @@ class HebrewPDFReport:
                 self._add_rtl_text(0, 100, subtitle, 'C')
             
             # Company name
+            if company is None:
+                company = "מערכת ניתוח נתונים"
             self.pdf.set_font('Hebrew', 'B', 14)
             self._add_rtl_text(0, 120, company, 'C')
             
-            # Date with timezone support
+            # Date with i18n and timezone support  
             if date is None:
-                try:
-                    # Try to use zoneinfo for proper timezone support
-                    report_tz = os.getenv('REPORT_TZ', 'Asia/Jerusalem')
-                    try:
-                        from zoneinfo import ZoneInfo
-                        tz = ZoneInfo(report_tz)
-                        date = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-                    except ImportError:
-                        # Fallback for Python < 3.9 or missing zoneinfo
-                        logger.info("zoneinfo not available, using system timezone")
-                        date = datetime.now().strftime("%d/%m/%Y %H:%M")
-                except Exception as e:
-                    logger.warning(f"Error setting timezone: {e}")
-                    date = datetime.now().strftime("%d/%m/%Y %H:%M")
+                date = get_current_datetime_formatted()
             
             self.pdf.set_font('Hebrew', '', 12)
-            date_text = f"תאריך הדוח: {date}"
+            date_text = f"{t('report_date')}: {date}"
             self._add_rtl_text(0, 140, date_text, 'C')
             
             # Decorative lines
@@ -1059,11 +1089,386 @@ class HebrewPDFReport:
             
         except Exception as e:
             logger.error(f"Error adding chart: {e}")
+
+    def add_data_preview_section(self, df: pd.DataFrame):
+        """Add data preview section showing df.head() as a table image"""
+        try:
+            from i18n import t
+            
+            self.add_section_header(t('data_preview'), 2)
+            self.add_text(t('data_preview_subtitle'), 11, indent=10)
+            
+            # Add basic data shape information
+            rows, cols = df.shape
+            self.add_text(f"{t('data_shape')}: {rows:,} {t('rows_count')}, {cols} {t('columns_count')}", 11, indent=10)
+            
+            # Create a preview table image
+            import tempfile
+            
+            # Get first 10 rows for preview
+            preview_df = df.head(10)
+            
+            # Create figure for the table
+            fig, ax = plt.subplots(figsize=(12, max(4, len(preview_df) * 0.5)))
+            ax.axis('tight')
+            ax.axis('off')
+            
+            # Create table
+            table_data = []
+            table_data.append(list(preview_df.columns))
+            
+            for _, row in preview_df.iterrows():
+                row_data = []
+                for val in row:
+                    if pd.isna(val):
+                        row_data.append('NaN')
+                    elif isinstance(val, (int, float)) and not pd.isna(val):
+                        row_data.append(f"{val:,.2f}" if isinstance(val, float) else f"{val:,}")
+                    else:
+                        str_val = str(val)
+                        row_data.append(str_val[:20] + '...' if len(str_val) > 20 else str_val)
+                table_data.append(row_data)
+            
+            table = ax.table(cellText=table_data[1:], colLabels=table_data[0], 
+                           cellLoc='center', loc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(8)
+            table.scale(1.2, 1.5)
+            
+            # Style header row
+            for i in range(len(table_data[0])):
+                table[(0, i)].set_facecolor('#E8F4FD')
+                table[(0, i)].set_text_props(weight='bold')
+            
+            plt.tight_layout()
+            
+            # Save as temporary image
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                plt.savefig(tmp_file.name, dpi=150, bbox_inches='tight', 
+                          facecolor='white', edgecolor='none')
+                plt.close()
+                
+                # Add to PDF
+                self.add_chart(tmp_file.name)
+                
+                # Clean up
+                os.unlink(tmp_file.name)
+                
+        except Exception as e:
+            logger.error(f"Error creating data preview section: {e}")
+            from i18n import t
+            self.add_text(t('error_processing_data'), 11, indent=10)
+
+    def add_missing_values_section(self, df: pd.DataFrame):
+        """Add missing values analysis section with bar chart"""
+        try:
+            from i18n import t
+            
+            self.add_section_header(t('missing_values'), 2)
+            self.add_text(t('missing_values_subtitle'), 11, indent=10)
+            
+            # Calculate missing values
+            missing_counts = df.isnull().sum()
+            missing_percentages = (missing_counts / len(df)) * 100
+            
+            # Check if there are any missing values
+            if missing_counts.sum() == 0:
+                self.add_text(t('no_missing_values'), 12, bold=True, indent=10)
+                return
+            
+            # Create missing values chart
+            import tempfile
+            
+            # Filter columns with missing values
+            missing_data = missing_percentages[missing_percentages > 0].sort_values(ascending=False)
+            
+            if len(missing_data) > 0:
+                fig, ax = plt.subplots(figsize=(10, max(4, len(missing_data) * 0.3)))
+                
+                bars = ax.barh(range(len(missing_data)), missing_data.values, color='#ff7f7f')
+                ax.set_yticks(range(len(missing_data)))
+                ax.set_yticklabels(missing_data.index)
+                ax.set_xlabel(t('missing_percentage'))
+                ax.set_title(t('missing_values'), fontsize=14, fontweight='bold')
+                
+                # Add value labels on bars
+                for i, (bar, val) in enumerate(zip(bars, missing_data.values)):
+                    ax.text(bar.get_width() + 0.5, bar.get_y() + bar.get_height()/2, 
+                           f'{val:.1f}%', ha='left', va='center')
+                
+                plt.tight_layout()
+                
+                # Save as temporary image
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                    plt.savefig(tmp_file.name, dpi=150, bbox_inches='tight',
+                              facecolor='white', edgecolor='none')
+                    plt.close()
+                    
+                    # Add to PDF
+                    self.add_chart(tmp_file.name)
+                    
+                    # Clean up
+                    os.unlink(tmp_file.name)
+                    
+        except Exception as e:
+            logger.error(f"Error creating missing values section: {e}")
+            from i18n import t
+            self.add_text(t('error_generating_chart'), 11, indent=10)
+
+    def add_categorical_distributions_section(self, df: pd.DataFrame):
+        """Add categorical distributions section with top value frequencies"""
+        try:
+            from i18n import t
+            
+            self.add_section_header(t('categorical_distributions'), 2)
+            self.add_text(t('categorical_distributions_subtitle'), 11, indent=10)
+            
+            # Find categorical columns (object dtype or low cardinality)
+            categorical_cols = []
+            for col in df.columns:
+                if df[col].dtype == 'object' or (df[col].dtype in ['int64', 'float64'] and df[col].nunique() <= 10):
+                    categorical_cols.append(col)
+            
+            if len(categorical_cols) == 0:
+                self.add_text(t('no_categorical_data'), 12, indent=10)
+                return
+                
+            import tempfile
+            
+            # Process up to 4 categorical columns
+            cols_to_plot = categorical_cols[:4]
+            
+            if len(cols_to_plot) > 0:
+                fig_rows = (len(cols_to_plot) + 1) // 2
+                fig, axes = plt.subplots(fig_rows, 2, figsize=(12, fig_rows * 4))
+                
+                if fig_rows == 1:
+                    axes = [axes] if len(cols_to_plot) > 1 else [axes]
+                axes = axes.flatten() if fig_rows > 1 or len(cols_to_plot) > 1 else [axes]
+                
+                for i, col in enumerate(cols_to_plot):
+                    ax = axes[i]
+                    
+                    # Get top 10 values
+                    value_counts = df[col].value_counts().head(10)
+                    
+                    if len(value_counts) > 0:
+                        bars = ax.bar(range(len(value_counts)), value_counts.values, color='#87ceeb')
+                        ax.set_xticks(range(len(value_counts)))
+                        ax.set_xticklabels([str(x)[:15] + '...' if len(str(x)) > 15 else str(x) 
+                                          for x in value_counts.index], rotation=45, ha='right')
+                        ax.set_title(f'{col}', fontsize=12, fontweight='bold')
+                        ax.set_ylabel(t('frequency'))
+                        
+                        # Add value labels on bars
+                        for bar, val in zip(bars, value_counts.values):
+                            ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + max(value_counts.values) * 0.01,
+                                   str(val), ha='center', va='bottom', fontsize=9)
+                
+                # Hide empty subplots
+                for i in range(len(cols_to_plot), len(axes)):
+                    axes[i].set_visible(False)
+                
+                plt.tight_layout()
+                
+                # Save as temporary image
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                    plt.savefig(tmp_file.name, dpi=150, bbox_inches='tight',
+                              facecolor='white', edgecolor='none')
+                    plt.close()
+                    
+                    # Add to PDF
+                    self.add_chart(tmp_file.name)
+                    
+                    # Clean up
+                    os.unlink(tmp_file.name)
+                    
+        except Exception as e:
+            logger.error(f"Error creating categorical distributions section: {e}")
+            from i18n import t
+            self.add_text(t('error_generating_chart'), 11, indent=10)
+
+    def add_numeric_distributions_section(self, df: pd.DataFrame):
+        """Add numeric distributions section with histograms and boxplots"""
+        try:
+            from i18n import t
+            
+            self.add_section_header(t('numeric_distributions'), 2)
+            self.add_text(t('numeric_distributions_subtitle'), 11, indent=10)
+            
+            # Find numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+            
+            if len(numeric_cols) == 0:
+                self.add_text(t('no_numeric_data'), 12, indent=10)
+                return
+                
+            import tempfile
+            
+            # Process up to 4 numeric columns
+            cols_to_plot = numeric_cols[:4]
+            
+            if len(cols_to_plot) > 0:
+                # Create histograms
+                fig, axes = plt.subplots(2, len(cols_to_plot), figsize=(len(cols_to_plot) * 3, 8))
+                
+                if len(cols_to_plot) == 1:
+                    axes = axes.reshape(-1, 1)
+                
+                for i, col in enumerate(cols_to_plot):
+                    # Histogram
+                    ax_hist = axes[0, i] if len(cols_to_plot) > 1 else axes[0]
+                    data = df[col].dropna()
+                    
+                    if len(data) > 0:
+                        ax_hist.hist(data, bins=20, alpha=0.7, color='#87ceeb', edgecolor='black')
+                        ax_hist.set_title(f'{t("histogram")} - {col}', fontsize=10, fontweight='bold')
+                        ax_hist.set_xlabel(t('value'))
+                        ax_hist.set_ylabel(t('frequency'))
+                    
+                    # Boxplot
+                    ax_box = axes[1, i] if len(cols_to_plot) > 1 else axes[1]
+                    
+                    if len(data) > 0:
+                        ax_box.boxplot(data, patch_artist=True, 
+                                     boxprops=dict(facecolor='#87ceeb', alpha=0.7))
+                        ax_box.set_title(f'{t("boxplot")} - {col}', fontsize=10, fontweight='bold')
+                        ax_box.set_ylabel(t('value'))
+                        ax_box.set_xticklabels([col])
+                
+                plt.tight_layout()
+                
+                # Save as temporary image
+                with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                    plt.savefig(tmp_file.name, dpi=150, bbox_inches='tight',
+                              facecolor='white', edgecolor='none')
+                    plt.close()
+                    
+                    # Add to PDF
+                    self.add_chart(tmp_file.name)
+                    
+                    # Clean up
+                    os.unlink(tmp_file.name)
+                    
+        except Exception as e:
+            logger.error(f"Error creating numeric distributions section: {e}")
+            from i18n import t
+            self.add_text(t('error_generating_chart'), 11, indent=10)
+
+    def add_statistical_summary_section(self, df: pd.DataFrame):
+        """Add statistical summary section with df.describe() as table image"""
+        try:
+            from i18n import t
+            
+            self.add_section_header(t('statistical_summary'), 2)
+            self.add_text(t('statistical_summary_subtitle'), 11, indent=10)
+            
+            # Get numeric columns for statistical summary
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            
+            if len(numeric_cols) == 0:
+                self.add_text(t('no_numeric_data'), 12, indent=10)
+                return
+                
+            # Generate statistical summary
+            stats_df = df[numeric_cols].describe()
+            
+            import tempfile
+            
+            # Create figure for the statistics table
+            fig, ax = plt.subplots(figsize=(max(8, len(numeric_cols) * 1.5), 6))
+            ax.axis('tight')
+            ax.axis('off')
+            
+            # Prepare table data with translated row labels
+            table_data = []
+            
+            # Header row (column names)
+            header = [''] + [str(col)[:15] + '...' if len(str(col)) > 15 else str(col) for col in stats_df.columns]
+            table_data.append(header)
+            
+            # Translate index labels
+            index_translations = {
+                'count': t('count'),
+                'mean': t('mean'),
+                'std': t('std'),
+                'min': t('min'),
+                '25%': t('q25'),
+                '50%': t('median'),
+                '75%': t('q75'),
+                'max': t('max')
+            }
+            
+            # Data rows
+            for idx in stats_df.index:
+                row = [index_translations.get(idx, idx)]
+                for val in stats_df.loc[idx]:
+                    if pd.isna(val):
+                        row.append('N/A')
+                    else:
+                        row.append(f'{val:,.2f}')
+                table_data.append(row)
+            
+            # Create table
+            table = ax.table(cellText=table_data[1:], colLabels=table_data[0],
+                           cellLoc='center', loc='center')
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.2, 1.5)
+            
+            # Style header row
+            for i in range(len(table_data[0])):
+                table[(0, i)].set_facecolor('#E8F4FD')
+                table[(0, i)].set_text_props(weight='bold')
+            
+            # Style first column (row labels)
+            for i in range(1, len(table_data)):
+                table[(i, 0)].set_facecolor('#F0F0F0')
+                table[(i, 0)].set_text_props(weight='bold')
+            
+            ax.set_title(t('descriptive_statistics'), fontsize=14, fontweight='bold', pad=20)
+            plt.tight_layout()
+            
+            # Save as temporary image
+            with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp_file:
+                plt.savefig(tmp_file.name, dpi=150, bbox_inches='tight',
+                          facecolor='white', edgecolor='none')
+                plt.close()
+                
+                # Add to PDF
+                self.add_chart(tmp_file.name)
+                
+                # Clean up
+                os.unlink(tmp_file.name)
+                
+        except Exception as e:
+            logger.error(f"Error creating statistical summary section: {e}")
+            from i18n import t
+            self.add_text(t('error_processing_data'), 11, indent=10)
+
+    def add_guaranteed_sections(self, df: pd.DataFrame, charts_dir: str = "charts"):
+        """Add guaranteed report sections that always appear"""
+        try:
+            logger.info("Adding guaranteed report sections")
+            
+            # Always add these sections regardless of data content
+            self.add_data_preview_section(df)
+            self.add_missing_values_section(df)  
+            self.add_categorical_distributions_section(df)
+            self.add_numeric_distributions_section(df)
+            self.add_statistical_summary_section(df)
+            
+            logger.info("Guaranteed report sections added successfully")
+            
+        except Exception as e:
+            logger.error(f"Error adding guaranteed sections: {e}")
     
     def generate_comprehensive_report(self, df: pd.DataFrame, 
                                     output_path: str = "data_analysis_report.pdf") -> str:
         """יצירת דוח מקיף מנתונים אמיתיים"""
         try:
+            from i18n import t, get_current_datetime_formatted
+            
             # Analyze the data
             analysis_results = self.analyze_real_data(df)
             
@@ -1071,28 +1476,31 @@ class HebrewPDFReport:
                 logger.error(f"Analysis failed: {analysis_results['error']}")
                 return None
             
-            # Create title page
+            # Create title page with i18n support
             self.create_title_page(
-                title="דוח ניתוח נתונים מקיף",
-                subtitle="ניתוח אוטומטי מלא של מערך הנתונים"
+                title=t('report_title'),
+                subtitle=t('report_subtitle')
             )
             
-            # Add table of contents
-            self.add_section_header("תוכן עניינים", 1)
+            # Add table of contents with i18n
+            self.add_section_header(t('table_of_contents'), 1)
             toc_items = [
-                "1. סיכום נתונים",
-                "2. ניתוח עמודות", 
-                "3. תובנות עיקריות",
-                "4. ניתוח קורלציות",
-                "5. ניתוח ערכים חריגים",
-                "6. המלצות לשיפור",
-                "7. תרשימים וויזואליזציות"
+                f"1. {t('data_preview')}",
+                f"2. {t('missing_values')}",
+                f"3. {t('categorical_distributions')}", 
+                f"4. {t('numeric_distributions')}",
+                f"5. {t('statistical_summary')}",
+                f"6. {t('insights')}",
+                f"7. {t('recommendations')}"
             ]
             
             for item in toc_items:
                 self.add_text(item, 12, bold=True, indent=10)
             
-            # Add content sections
+            # Always add guaranteed sections first (these ensure non-empty reports)
+            self.add_guaranteed_sections(df)
+            
+            # Add original content sections if available
             if 'basic_info' in analysis_results:
                 self.add_data_summary(analysis_results['basic_info'])
                 
