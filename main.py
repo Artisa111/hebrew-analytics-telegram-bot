@@ -632,7 +632,7 @@ class HebrewDataAnalyticsBot:
                 # שליחת התרשים
                 with open(chart_file, 'rb') as img_file:
                     await context.bot.send_photo(
-                        chat_id=query.message.chat_id,
+                        chat_id=query.message.chat.id,
                         photo=img_file,
                         caption=f"📊 התרשים שלך - {HEBREW_TEXTS['chart_types'].get(chart_type, chart_type)}"
                     )
