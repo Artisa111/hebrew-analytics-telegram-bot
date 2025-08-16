@@ -3,7 +3,10 @@
 הבוט הראשי - Main bot file for the Hebrew Data Analytics Telegram Bot
 """
 
-import logging
+# Initialize logging before other imports  
+from logging_config import setup_logging
+logger = setup_logging()
+
 import os
 import pandas as pd
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, ParseMode
@@ -19,14 +22,9 @@ from database import DatabaseManager
 from google_sheets import get_google_sheets_manager
 from data_analysis import DataAnalyzer
 from visualization import get_chart_generator
-from pdf_report import generate_hebrew_pdf_report
+from pdf_report import generate_complete_data_report
 
-# Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+logger.info("Hebrew Data Analytics Bot starting with guaranteed PDF content generation")
 
 class HebrewDataAnalyticsBot:
     def __init__(self, bot_token: str = None):
@@ -481,14 +479,13 @@ class HebrewDataAnalyticsBot:
                 chart_files = self.chart_generator.create_comprehensive_dashboard(df, analysis_results)
                 self.user_sessions[user_id]['chart_files'] = chart_files
             
-            # יצירת הדוח PDF
-            analysis_results = self.user_sessions[user_id]['analysis_results']
-            chart_files = self.user_sessions[user_id].get('chart_files', [])
+            # יצירת הדוח PDF עם מערכת הדוח המשופרת
+            df = self.user_sessions[user_id]['data']
             
-            pdf_path = generate_hebrew_pdf_report(
-                analysis_results=analysis_results,
-                chart_files=chart_files,
-                output_path=f"report_user_{user_id}.pdf"
+            pdf_path = generate_complete_data_report(
+                df=df,
+                output_path=f"report_user_{user_id}.pdf",
+                include_charts=True
             )
             
             if pdf_path and os.path.exists(pdf_path):

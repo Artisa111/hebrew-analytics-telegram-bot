@@ -3,7 +3,10 @@
 בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation
 """
 
-import logging
+# Initialize logging before other imports
+from logging_config import setup_logging
+logger = setup_logging()
+
 import os
 import pandas as pd
 import numpy as np
@@ -23,14 +26,10 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
-from pdf_report import generate_hebrew_pdf_report, generate_complete_data_report
+from pdf_report import generate_complete_data_report
 
 # Setup logging
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
+logger.info("Simple Hebrew Bot starting with advanced PDF generation")
 
 # Настройка matplotlib для поддержки иврита
 plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
