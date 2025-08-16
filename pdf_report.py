@@ -26,10 +26,19 @@ import warnings
 import requests
 import platform
 
+# Import new modules
+from preprocessing import preprocess_df, read_csv_robust, read_excel_robust
+from i18n import t, get_hebrew_date_time_text, REPORT_LANG, REPORT_TZ
+from report_sections import add_guaranteed_sections, add_statistical_summary_section
+from logging_config import initialize_logging
+
 warnings.filterwarnings('ignore')
 
 # Configure matplotlib for Hebrew
 plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma']
+
+# Initialize logging system
+initialize_logging()
 
 logger = logging.getLogger(__name__)
 
@@ -371,9 +380,10 @@ class HebrewPDFReport:
             self.pdf.set_fill_color(230, 230, 250)
             self.pdf.rect(70, 30, 70, 25, 'F')
             
-            # Main title
+            # Main title (use i18n if no title provided)
+            display_title = title if title else t('report_title')
             self.pdf.set_font('Hebrew', 'B', 24)
-            self._add_rtl_text(0, 80, title, 'C')
+            self._add_rtl_text(0, 80, display_title, 'C')
             
             # Subtitle
             if subtitle:
@@ -384,25 +394,13 @@ class HebrewPDFReport:
             self.pdf.set_font('Hebrew', 'B', 14)
             self._add_rtl_text(0, 120, company, 'C')
             
-            # Date with timezone support
+            # Date with Hebrew i18n and timezone support
             if date is None:
-                try:
-                    # Try to use zoneinfo for proper timezone support
-                    report_tz = os.getenv('REPORT_TZ', 'Asia/Jerusalem')
-                    try:
-                        from zoneinfo import ZoneInfo
-                        tz = ZoneInfo(report_tz)
-                        date = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
-                    except ImportError:
-                        # Fallback for Python < 3.9 or missing zoneinfo
-                        logger.info("zoneinfo not available, using system timezone")
-                        date = datetime.now().strftime("%d/%m/%Y %H:%M")
-                except Exception as e:
-                    logger.warning(f"Error setting timezone: {e}")
-                    date = datetime.now().strftime("%d/%m/%Y %H:%M")
-            
+                date_text = get_hebrew_date_time_text()
+            else:
+                date_text = f"{t('report_date')}: {date}"
+                
             self.pdf.set_font('Hebrew', '', 12)
-            date_text = f"תאריך הדוח: {date}"
             self._add_rtl_text(0, 140, date_text, 'C')
             
             # Decorative lines
@@ -1064,41 +1062,32 @@ class HebrewPDFReport:
                                     output_path: str = "data_analysis_report.pdf") -> str:
         """יצירת דוח מקיף מנתונים אמיתיים"""
         try:
-            # Analyze the data
-            analysis_results = self.analyze_real_data(df)
+            # Preprocess the data for robust handling
+            logger.info("Preprocessing data for robust report generation...")
+            processed_df = preprocess_df(df.copy())
+            
+            # Analyze the processed data
+            analysis_results = self.analyze_real_data(processed_df)
             
             if 'error' in analysis_results:
                 logger.error(f"Analysis failed: {analysis_results['error']}")
                 return None
             
-            # Create title page
+            # Create title page with i18n support
             self.create_title_page(
-                title="דוח ניתוח נתונים מקיף",
+                title=t('report_title'),
                 subtitle="ניתוח אוטומטי מלא של מערך הנתונים"
             )
             
-            # Add table of contents
-            self.add_section_header("תוכן עניינים", 1)
-            toc_items = [
-                "1. סיכום נתונים",
-                "2. ניתוח עמודות", 
-                "3. תובנות עיקריות",
-                "4. ניתוח קורלציות",
-                "5. ניתוח ערכים חריגים",
-                "6. המלצות לשיפור",
-                "7. תרשימים וויזואליזציות"
-            ]
+            # Add guaranteed sections (always present)
+            charts_dir = "charts"
+            os.makedirs(charts_dir, exist_ok=True)
+            add_guaranteed_sections(self, processed_df, charts_dir)
             
-            for item in toc_items:
-                self.add_text(item, 12, bold=True, indent=10)
+            # Add statistical summary section at the end
+            add_statistical_summary_section(self, processed_df, charts_dir)
             
-            # Add content sections
-            if 'basic_info' in analysis_results:
-                self.add_data_summary(analysis_results['basic_info'])
-                
-                if 'column_details' in analysis_results['basic_info']:
-                    self.add_column_analysis(analysis_results['basic_info']['column_details'])
-            
+            # Add optional analysis sections if available
             if 'insights' in analysis_results:
                 self.add_insights_section(analysis_results['insights'])
             
@@ -1109,10 +1098,10 @@ class HebrewPDFReport:
                 self.add_outliers_section(analysis_results['outliers'])
             
             # Add recommendations
-            self.add_recommendations_section(analysis_results, df)
+            self.add_recommendations_section(analysis_results, processed_df)
             
             # Create and add charts
-            chart_files = self.create_visualizations(df)
+            chart_files = self.create_visualizations(processed_df)
             if chart_files:
                 self.add_charts_section(chart_files)
             
@@ -1174,8 +1163,9 @@ def analyze_csv_file(csv_file_path: str, output_pdf_path: str = None) -> str:
         str: Path to generated PDF report
     """
     try:
-        # Read CSV file
-        df = pd.read_csv(csv_file_path, encoding='utf-8')
+        logger.info(f"Reading CSV file with robust parsing: {csv_file_path}")
+        # Read CSV file with robust parsing
+        df = read_csv_robust(csv_file_path)
         
         # Set default output path if not provided
         if output_pdf_path is None:
@@ -1205,8 +1195,9 @@ def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0,
         str: Path to generated PDF report
     """
     try:
-        # Read Excel file
-        df = pd.read_excel(excel_file_path, sheet_name=sheet_name)
+        logger.info(f"Reading Excel file with robust parsing: {excel_file_path}")
+        # Read Excel file with robust parsing
+        df = read_excel_robust(excel_file_path, sheet_name=sheet_name)
         
         # Set default output path if not provided
         if output_pdf_path is None:
