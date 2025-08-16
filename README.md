@@ -87,6 +87,27 @@ python-3.11.8
 - Ensure BOT_TOKEN is set. Without it, the app will exit on startup.
 - If you see matplotlib backend/display errors, set MPLBACKEND=Agg.
 - Telegram file upload limit for bots is ~50MB.
+- **Logging Rate Limiting**: The bot automatically limits logs to prevent Railway's 500 logs/sec throttling (see logging configuration below).
+
+### Logging Configuration (Railway Optimized)
+The bot includes production-ready logging with rate limiting to prevent Railway deployment issues:
+
+**Default Settings:**
+- `LOG_LEVEL=INFO` - Controls verbosity (DEBUG, INFO, WARNING, ERROR)
+- `LOGS_MAX_PER_SEC=100` - Token bucket rate limiter (max logs per second)
+- External libraries (telegram, pandas, matplotlib, etc.) automatically set to WARNING level
+- English-only logs for technical debugging
+
+**Environment Variables:**
+```bash
+LOG_LEVEL=INFO              # Set to WARNING or ERROR to reduce verbosity
+LOGS_MAX_PER_SEC=50         # Lower rate limit for Railway free tier
+```
+
+**Technical Details:**
+- Uses token bucket algorithm to smooth log bursts
+- Automatically reduces verbosity from external loggers (telegram/aiogram/uvicorn/pandas)
+- Prevents Railway 500 logs/sec rate limit issues that cause throttling
 
 ### Hebrew PDF Font Resolution
 The PDF report system uses a robust Hebrew font resolution mechanism with the following priority order:
@@ -97,10 +118,31 @@ The PDF report system uses a robust Hebrew font resolution mechanism with the fo
 4. **Runtime download**: Downloads Noto Sans Hebrew fonts from GitHub if none are found
 
 ### Optional Environment Variables
-- `REPORT_TZ`: Timezone for PDF report dates (default: "Asia/Jerusalem"). Example: "UTC", "America/New_York"
+- `REPORT_TZ`: Timezone for PDF report dates (default: "Asia/Jerusalem"). Example: "UTC", "America/New_York"  
+- `REPORT_LANG`: Report language (default: "he" for Hebrew)
 - `REPORT_FONT_REGULAR`: Path to custom regular Hebrew font file
 - `REPORT_FONT_BOLD`: Path to custom bold Hebrew font file
 - `MPLBACKEND`: Matplotlib backend (recommend "Agg" for headless environments like Railway)
+
+### Robust Data Processing
+The bot handles messy real-world data automatically:
+
+**Supported Formats:**
+- **Currencies**: ₪, $, €, £, ¥ symbols automatically stripped
+- **Negatives**: Parentheses format (123.45) → -123.45  
+- **Percentages**: 85% → 0.85 (automatic conversion)
+- **Thousand separators**: "1,234.56", "1 234.56", "1.234,56" all supported
+- **Dates**: Auto-detection with day-first heuristic (15/01/2023, 15-Jan-2023, etc.)
+
+**CSV Auto-Detection:**
+- Automatically detects delimiters (comma, semicolon, tab)
+- Handles multiple encodings (UTF-8, Latin1, CP1252)
+- Cleans column names and handles duplicates
+
+**Guaranteed Report Content:**
+- Reports are **never empty** - always includes data preview, missing value analysis, and statistical summaries
+- Fallback visualizations ensure meaningful content even with problematic datasets
+- Hebrew-localized section titles with timezone-aware timestamps
 
 ### Font Troubleshooting
 The bot logs exactly which fonts are loaded:
