@@ -29,29 +29,59 @@ Production‑ready Telegram bot for advanced, automated data analytics — fully
 - `run_bot.py` – alt runner
 - `requirements.txt` – dependencies
 
+### 🔐 Security and Secrets
+
+**⚠️ Important**: This project requires secure handling of sensitive information. Please review our [SECURITY.md](./SECURITY.md) for complete security guidelines.
+
+**Key Security Points:**
+- **BOT_TOKEN must be provided via environment variable** (never hardcode it)
+- **Never commit `.env` files or `credentials.json`** to the repository
+- For Railway deployment: set `BOT_TOKEN` in Project Settings → Variables
+- For local development: use environment variables or `.env` files (local only)
+
+**Local .env example** (create this file locally, never commit it):
+```bash
+# .env (local only - never commit!)
+BOT_TOKEN=your_telegram_bot_token_here
+GOOGLE_CREDENTIALS_FILE=credentials.json
+LOG_LEVEL=INFO
+```
+
+See [SECURITY.md](./SECURITY.md) for complete security guidelines, token rotation procedures, and best practices.
+
 ### Local Run
-1) Create a bot via BotFather and copy the token
+1) Create a bot via [@BotFather](https://t.me/BotFather) and copy the token
 2) Create venv and install deps:
 ```bash
 python -m venv .venv && . .venv/Scripts/activate
 pip install -r requirements.txt
 ```
-3) Set env and run:
-```powershell
+3) Set BOT_TOKEN environment variable and run:
+```bash
+# Linux/Mac
+export BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
+python simple_bot.py
+
+# Windows PowerShell  
 $env:BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
+python simple_bot.py
+
+# Or create .env file (see Security section above) and run
 python simple_bot.py
 ```
 
 ### Railway Deployment
 1. Fork this repo on GitHub
 2. On Railway → New Project → Deploy from GitHub → select your fork
-3. Project Settings → Variables:
-   - `BOT_TOKEN` = your Telegram token
+3. **Project Settings → Variables** (REQUIRED):
+   - `BOT_TOKEN` = your Telegram token from [@BotFather](https://t.me/BotFather)
    - (optional) `GOOGLE_CREDENTIALS_FILE` = path to Google credentials JSON
 4. Deploy will automatically use the included `Procfile`:
 ```
 worker: python simple_bot.py
 ```
+
+**Important**: The `BOT_TOKEN` must be set as an environment variable in Railway. Do not hardcode it in the source code.
 
 The included `runtime.txt` specifies Python 3.11.8 for consistency.
 
