@@ -97,10 +97,15 @@ The PDF report system uses a robust Hebrew font resolution mechanism with the fo
 4. **Runtime download**: Downloads Noto Sans Hebrew fonts from GitHub if none are found
 
 ### Optional Environment Variables
+- `BOT_TOKEN`: Telegram bot token (required)
+- `MPLBACKEND`: Matplotlib backend (recommend "Agg" for headless environments like Railway)
+- `REPORT_LANG`: Report language (default: "he" for Hebrew, can be "en" for English)
 - `REPORT_TZ`: Timezone for PDF report dates (default: "Asia/Jerusalem"). Example: "UTC", "America/New_York"
 - `REPORT_FONT_REGULAR`: Path to custom regular Hebrew font file
 - `REPORT_FONT_BOLD`: Path to custom bold Hebrew font file
-- `MPLBACKEND`: Matplotlib backend (recommend "Agg" for headless environments like Railway)
+- `LOG_LEVEL`: Logging level (default: "INFO", options: "DEBUG", "INFO", "WARNING", "ERROR")
+- `LOGS_MAX_PER_SEC`: Rate limit for log messages per second (default: "100")
+- `UVICORN_ACCESS_LOG`: Enable/disable Uvicorn access logs (default: "false")
 
 ### Font Troubleshooting
 The bot logs exactly which fonts are loaded:
