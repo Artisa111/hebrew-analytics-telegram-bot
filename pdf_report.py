@@ -11,6 +11,9 @@ from typing import Dict, List, Any, Optional, Union
 import logging
 import os
 from datetime import datetime
+import matplotlib
+# Enforce headless backend before importing pyplot
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
@@ -20,6 +23,8 @@ from scipy import stats
 import arabic_reshaper
 from bidi.algorithm import get_display
 import warnings
+import requests
+import platform
 
 warnings.filterwarnings('ignore')
 
@@ -31,14 +36,245 @@ logger = logging.getLogger(__name__)
 class HebrewPDFReport:
     def __init__(self):
         self.pdf = FPDF()
-        self.setup_hebrew_support()
+        # Set page dimensions and margin BEFORE calling setup_hebrew_support
         self.current_y = 0
         self.page_width = 210
         self.page_height = 297
         self.margin = 20
         self.rtl_support = True
+        # Now setup Hebrew support with all attributes initialized
+        self.setup_hebrew_support()
+    
+    def resolve_hebrew_fonts(self) -> tuple[Optional[str], Optional[str]]:
+        """
+        Robust Hebrew font resolution in priority order:
+        1. Repository-bundled fonts
+        2. Environment variable overrides
+        3. System font paths
+        4. Download Noto Sans Hebrew as fallback
+        
+        Returns:
+            tuple: (regular_font_path, bold_font_path) or (None, None) if all fail
+        """
+        try:
+            logger.info("Starting Hebrew font resolution...")
+            
+            # 1. Check repository-bundled fonts first
+            repo_fonts = self._check_repository_fonts()
+            if repo_fonts[0] and repo_fonts[1]:
+                logger.info(f"Using repository-bundled fonts: regular={repo_fonts[0]}, bold={repo_fonts[1]}")
+                return repo_fonts
+            
+            # 2. Check environment variable overrides
+            env_fonts = self._check_environment_fonts()
+            if env_fonts[0] and env_fonts[1]:
+                logger.info(f"Using environment-specified fonts: regular={env_fonts[0]}, bold={env_fonts[1]}")
+                return env_fonts
+            
+            # 3. Scan system font paths
+            system_fonts = self._scan_system_fonts()
+            if system_fonts[0] and system_fonts[1]:
+                logger.info(f"Using system fonts: regular={system_fonts[0]}, bold={system_fonts[1]}")
+                return system_fonts
+            
+            # 4. Last resort: download Noto Sans Hebrew
+            downloaded_fonts = self._download_noto_fonts()
+            if downloaded_fonts[0] and downloaded_fonts[1]:
+                logger.info(f"Downloaded and using Noto fonts: regular={downloaded_fonts[0]}, bold={downloaded_fonts[1]}")
+                return downloaded_fonts
+            
+            logger.warning("Failed to resolve Hebrew fonts through all methods")
+            return None, None
+            
+        except Exception as e:
+            logger.error(f"Error in Hebrew font resolution: {e}")
+            return None, None
+    
+    def _check_repository_fonts(self) -> tuple[Optional[str], Optional[str]]:
+        """Check for repository-bundled fonts in assets/fonts/"""
+        try:
+            assets_fonts_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'fonts')
+            regular_path = os.path.join(assets_fonts_dir, 'NotoSansHebrew-Regular.ttf')
+            bold_path = os.path.join(assets_fonts_dir, 'NotoSansHebrew-Bold.ttf')
+            
+            regular_font = regular_path if os.path.exists(regular_path) else None
+            bold_font = bold_path if os.path.exists(bold_path) else None
+            
+            return regular_font, bold_font
+        except Exception as e:
+            logger.warning(f"Error checking repository fonts: {e}")
+            return None, None
+    
+    def _check_environment_fonts(self) -> tuple[Optional[str], Optional[str]]:
+        """Check environment variable font overrides"""
+        try:
+            regular_env = os.getenv('REPORT_FONT_REGULAR')
+            bold_env = os.getenv('REPORT_FONT_BOLD')
+            
+            regular_font = regular_env if regular_env and os.path.exists(regular_env) else None
+            bold_font = bold_env if bold_env and os.path.exists(bold_env) else None
+            
+            return regular_font, bold_font
+        except Exception as e:
+            logger.warning(f"Error checking environment fonts: {e}")
+            return None, None
+    
+    def _scan_system_fonts(self) -> tuple[Optional[str], Optional[str]]:
+        """Scan system font paths for Hebrew-compatible fonts"""
+        try:
+            # Extended font paths for different operating systems
+            font_paths = {
+                'windows': [
+                    'C:/Windows/Fonts/arial.ttf',
+                    'C:/Windows/Fonts/arialbd.ttf',
+                    'C:/Windows/Fonts/calibri.ttf',
+                    'C:/Windows/Fonts/calibrib.ttf',
+                    'C:/Windows/Fonts/NotoSansHebrew-Regular.ttf',
+                    'C:/Windows/Fonts/NotoSansHebrew-Bold.ttf'
+                ],
+                'linux': [
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+                    '/usr/share/fonts/truetype/noto/NotoSansHebrew-Regular.ttf',
+                    '/usr/share/fonts/truetype/noto/NotoSansHebrew-Bold.ttf',
+                    '/usr/share/fonts/TTF/NotoSansHebrew-Regular.ttf',
+                    '/usr/share/fonts/TTF/NotoSansHebrew-Bold.ttf'
+                ],
+                'mac': [
+                    '/System/Library/Fonts/Arial.ttf',
+                    '/System/Library/Fonts/Arial Bold.ttf',
+                    '/Library/Fonts/Arial.ttf',
+                    '/Library/Fonts/NotoSansHebrew-Regular.ttf',
+                    '/Library/Fonts/NotoSansHebrew-Bold.ttf'
+                ]
+            }
+            
+            regular_font = None
+            bold_font = None
+            
+            # Detect OS and try to load fonts
+            system = platform.system().lower()
+            if 'win' in system:
+                paths = font_paths.get('windows', [])
+            elif 'darwin' in system:
+                paths = font_paths.get('mac', [])
+            else:
+                paths = font_paths.get('linux', [])
+            
+            # Also try all paths as fallback
+            all_paths = []
+            for os_paths in font_paths.values():
+                all_paths.extend(os_paths)
+            
+            paths.extend(all_paths)
+            
+            # Find fonts
+            for path in paths:
+                if os.path.exists(path):
+                    if 'bold' in path.lower() or 'bd' in path.lower() or 'Bold' in path:
+                        if bold_font is None:
+                            bold_font = path
+                    else:
+                        if regular_font is None:
+                            regular_font = path
+                    
+                    if regular_font and bold_font:
+                        break
+            
+            return regular_font, bold_font
+        except Exception as e:
+            logger.warning(f"Error scanning system fonts: {e}")
+            return None, None
+    
+    def _download_noto_fonts(self) -> tuple[Optional[str], Optional[str]]:
+        """Download Noto Sans Hebrew fonts as last resort"""
+        try:
+            logger.info("Attempting to download Noto Sans Hebrew fonts...")
+            
+            # Determine download directory
+            download_dirs = [
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'assets', 'fonts'),
+                '/tmp/fonts',
+                os.path.expanduser('~/fonts')
+            ]
+            
+            fonts_dir = None
+            for dir_path in download_dirs:
+                try:
+                    os.makedirs(dir_path, exist_ok=True)
+                    # Test write permission
+                    test_file = os.path.join(dir_path, 'test_write.tmp')
+                    with open(test_file, 'w') as f:
+                        f.write('test')
+                    os.remove(test_file)
+                    fonts_dir = dir_path
+                    break
+                except (OSError, PermissionError):
+                    continue
+            
+            if not fonts_dir:
+                logger.warning("No writable directory found for font downloads")
+                return None, None
+            
+            # Download URLs for Noto Sans Hebrew
+            font_urls = {
+                'regular': 'https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSansHebrew/NotoSansHebrew-Regular.ttf',
+                'bold': 'https://github.com/notofonts/noto-fonts/raw/main/hinted/ttf/NotoSansHebrew/NotoSansHebrew-Bold.ttf'
+            }
+            
+            downloaded_fonts = {}
+            
+            for weight, url in font_urls.items():
+                try:
+                    filename = f'NotoSansHebrew-{weight.capitalize()}.ttf'
+                    filepath = os.path.join(fonts_dir, filename)
+                    
+                    # Skip if already exists
+                    if os.path.exists(filepath):
+                        downloaded_fonts[weight] = filepath
+                        continue
+                    
+                    logger.info(f"Downloading {weight} font from {url}")
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    
+                    with open(filepath, 'wb') as f:
+                        f.write(response.content)
+                    
+                    downloaded_fonts[weight] = filepath
+                    logger.info(f"Successfully downloaded {weight} font to {filepath}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to download {weight} font: {e}")
+            
+            regular_font = downloaded_fonts.get('regular')
+            bold_font = downloaded_fonts.get('bold')
+            
+            return regular_font, bold_font
+            
+        except Exception as e:
+            logger.error(f"Error downloading Noto fonts: {e}")
+            return None, None
     
     def _fix_hebrew_text(self, text: str) -> str:
+        """תיקון טקסט עברי לתצוגה נכונה מימין לשמאל"""
+        try:
+            if not text:
+                return ""
+            
+            # Handle mixed Hebrew-English text
+            if any('\u0590' <= char <= '\u05FF' for char in text):
+                # Reshape Arabic/Hebrew characters
+                reshaped_text = arabic_reshaper.reshape(text)
+                # Apply bidirectional algorithm
+                bidi_text = get_display(reshaped_text)
+                return bidi_text
+            return text
+        except Exception as e:
+            logger.warning(f"Error fixing Hebrew text: {e}")
+            return text
         """תיקון טקסט עברי לתצוגה נכונה מימין לשמאל"""
         try:
             if not text:
@@ -59,67 +295,41 @@ class HebrewPDFReport:
     def setup_hebrew_support(self):
         """הגדרת תמיכה מלאה בעברית ל-PDF"""
         try:
-            # Font paths for different operating systems
-            font_paths = {
-                'windows': [
-                    'C:/Windows/Fonts/arial.ttf',
-                    'C:/Windows/Fonts/arialbd.ttf',
-                    'C:/Windows/Fonts/calibri.ttf',
-                    'C:/Windows/Fonts/calibrib.ttf'
-                ],
-                'linux': [
-                    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
-                    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-                    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-                    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
-                ],
-                'mac': [
-                    '/System/Library/Fonts/Arial.ttf',
-                    '/System/Library/Fonts/Arial Bold.ttf',
-                    '/Library/Fonts/Arial.ttf'
-                ]
-            }
+            logger.info("Setting up Hebrew support for PDF...")
             
-            regular_font = None
-            bold_font = None
+            # Resolve Hebrew fonts using robust method
+            regular_font, bold_font = self.resolve_hebrew_fonts()
             
-            # Detect OS and try to load fonts
-            for os_type, paths in font_paths.items():
-                for path in paths:
-                    if os.path.exists(path):
-                        if 'bold' in path.lower() or 'bd' in path.lower():
-                            if bold_font is None:
-                                bold_font = path
-                        else:
-                            if regular_font is None:
-                                regular_font = path
-                        
-                        if regular_font and bold_font:
-                            break
-                if regular_font and bold_font:
-                    break
-            
-            # Add fonts to PDF
-            if regular_font:
+            # Add fonts to PDF if found
+            if regular_font and os.path.exists(regular_font):
                 self.pdf.add_font('Hebrew', '', regular_font, uni=True)
-                if bold_font:
+                
+                # Use bold font if available, otherwise use regular font for bold
+                if bold_font and os.path.exists(bold_font):
                     self.pdf.add_font('Hebrew', 'B', bold_font, uni=True)
                 else:
                     self.pdf.add_font('Hebrew', 'B', regular_font, uni=True)
+                    logger.info("Using regular font for bold text (bold font not found)")
                 
                 self.pdf.set_font('Hebrew', '', 12)
-                logger.info("Hebrew fonts loaded successfully")
+                logger.info(f"Hebrew fonts loaded successfully (regular={regular_font}, bold={bold_font or regular_font})")
+                
             else:
-                # Fallback to core fonts
+                # Fallback to core fonts - Hebrew support will be limited
                 self.pdf.set_font('Arial', '', 12)
-                logger.warning("Using fallback font - Hebrew support may be limited")
+                logger.warning("Using fallback core font - Hebrew support may be limited. Hebrew text may not display correctly.")
             
+            # Set auto page break and margins (now that self.margin is available)
             self.pdf.set_auto_page_break(auto=True, margin=15)
             self.pdf.set_margins(self.margin, self.margin, self.margin)
             
         except Exception as e:
             logger.error(f"Error setting up Hebrew support: {e}")
-            self.pdf.set_font('Arial', '', 12)
+            # Emergency fallback
+            try:
+                self.pdf.set_font('Arial', '', 12)
+            except:
+                pass
     
     def _get_text_width(self, text: str) -> float:
         """חישוב רוחב טקסט"""
@@ -174,9 +384,22 @@ class HebrewPDFReport:
             self.pdf.set_font('Hebrew', 'B', 14)
             self._add_rtl_text(0, 120, company, 'C')
             
-            # Date
+            # Date with timezone support
             if date is None:
-                date = datetime.now().strftime("%d/%m/%Y %H:%M")
+                try:
+                    # Try to use zoneinfo for proper timezone support
+                    report_tz = os.getenv('REPORT_TZ', 'Asia/Jerusalem')
+                    try:
+                        from zoneinfo import ZoneInfo
+                        tz = ZoneInfo(report_tz)
+                        date = datetime.now(tz).strftime("%d/%m/%Y %H:%M")
+                    except ImportError:
+                        # Fallback for Python < 3.9 or missing zoneinfo
+                        logger.info("zoneinfo not available, using system timezone")
+                        date = datetime.now().strftime("%d/%m/%Y %H:%M")
+                except Exception as e:
+                    logger.warning(f"Error setting timezone: {e}")
+                    date = datetime.now().strftime("%d/%m/%Y %H:%M")
             
             self.pdf.set_font('Hebrew', '', 12)
             date_text = f"תאריך הדוח: {date}"
