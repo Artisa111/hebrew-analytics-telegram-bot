@@ -6,6 +6,7 @@ Production-ready Telegram bot for automated data analytics, fully localized to H
 
 ### Key Features
 - File input: CSV, Excel (.xlsx), Google Sheets link
+- **Robust data preprocessing**: Handles messy data with currencies, percentages, mixed formats
 - Data quality and descriptive stats (missing values, duplicates, outliers, distributions)
 - Visualizations (matplotlib/seaborn): histograms + box plots, bar charts, correlation matrix, scatter plots, KDE, outlier analysis, time trends, statistical summary table
 - Funnel analysis with conversion captions per step
@@ -13,7 +14,8 @@ Production-ready Telegram bot for automated data analytics, fully localized to H
 - Insights & Recommendations: correlations, anomalies, distributions, categorical insights, business suggestions, further analyses
 - Machine Learning: KMeans clustering, RandomForest regression/classification with metrics and feature importances
 - A/B testing: proportions z-test and numeric t-test
-- PDF report in Hebrew (RTL) with charts and summaries
+- **Enhanced PDF report in Hebrew (RTL)** with guaranteed content sections and charts
+- **Rate-limited logging** for production deployments
 - SQLite session storage (optional)
 
 ### Tech Stack
@@ -26,11 +28,85 @@ Production-ready Telegram bot for automated data analytics, fully localized to H
 
 ### Project Structure
 - simple_bot.py – runnable bot with handlers, analytics, charts, insights
-- pdf_report.py – PDF report generation
+- pdf_report.py – Enhanced PDF report generation with guaranteed sections
+- preprocess.py – Robust data preprocessing utilities
+- i18n.py – Internationalization support (Hebrew/English)
+- logging_config.py – Rate-limited logging configuration
 - requirements.txt – dependencies
+- Dockerfile – Production container with Hebrew font support
 - Procfile – Railway worker entrypoint
 - runtime.txt – pinned Python version for Railway
 - Optional helpers: data_analysis.py, visualization.py, google_sheets.py
+
+### Environment Variables
+
+The bot supports the following environment variables for customization:
+
+#### Required
+- `BOT_TOKEN` - Your Telegram bot token (get from @BotFather)
+
+#### Optional - Report Configuration
+- `REPORT_LANG` - Report language (default: "he" for Hebrew, also supports "en")
+- `REPORT_TZ` - Timezone for report timestamps (default: "Asia/Jerusalem")
+- `REPORT_FONT_REGULAR` - Path to regular Hebrew font (auto-detected if not set)
+- `REPORT_FONT_BOLD` - Path to bold Hebrew font (auto-detected if not set)
+
+#### Optional - Logging Configuration  
+- `LOG_LEVEL` - Logging level: DEBUG, INFO, WARNING, ERROR, CRITICAL (default: "INFO")
+- `LOGS_MAX_PER_SEC` - Maximum log messages per second (default: "100")
+- `UVICORN_ACCESS_LOG` - Enable uvicorn access logs: "true" or "false" (default: "true")
+
+#### Optional - Application Settings
+- `MPLBACKEND` - Matplotlib backend (default: "Agg" for headless)
+- `PYTHONUNBUFFERED` - Disable Python output buffering (recommended: "1")
+- `GOOGLE_CREDENTIALS_FILE` - Path to Google Sheets credentials JSON (if using Google Sheets)
+
+## Enhanced Data Preprocessing
+
+The bot now handles messy data formats automatically:
+
+- **Currency symbols**: ₪, $, €, £, ¥ automatically detected and cleaned
+- **Percentage values**: 15% → 0.15 (converted to decimal)  
+- **Negative values in parentheses**: (250) → -250
+- **Thousand separators**: "1,234.56", "1.234,56", "1 234" all handled
+- **Mixed decimal formats**: European (12,5) and US (12.5) formats supported
+- **Date detection**: Automatic parsing with European day-first preference
+- **Column name normalization**: Spaces, special characters cleaned automatically
+
+## Enhanced PDF Reports
+
+Reports now include guaranteed content sections:
+
+- **Data Preview**: Always shows first 10 rows in a formatted table
+- **Missing Values Analysis**: Bar chart of missing data percentages
+- **Categorical Distributions**: Top value frequencies for categorical columns
+- **Numeric Distributions**: Histograms and box plots for numeric data
+- **Statistical Summary**: Complete df.describe() results as formatted table
+
+Reports feature proper Hebrew RTL layout with timezone-aware timestamps.
+
+## Docker Deployment
+
+The application includes full Docker support with Hebrew font handling:
+
+```bash
+# Build the Docker image
+docker build -t hebrew-analytics-bot .
+
+# Run with environment variables
+docker run -d \
+  -e BOT_TOKEN=your_bot_token_here \
+  -e REPORT_LANG=he \
+  -e LOG_LEVEL=INFO \
+  --name hebrew-bot \
+  hebrew-analytics-bot
+```
+
+The Docker image includes:
+- Python 3.11-slim base
+- Noto Sans Hebrew fonts pre-installed
+- Optimized for production deployment
+- All dependencies pre-installed
 
 ## Security and secrets
 - Never commit tokens or credentials to the repository. Use environment variables instead.
