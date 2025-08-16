@@ -28,6 +28,9 @@ import platform
 
 warnings.filterwarnings('ignore')
 
+# Import i18n module for translations
+from i18n import t
+
 # Configure matplotlib for Hebrew
 plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma']
 
@@ -362,7 +365,7 @@ class HebrewPDFReport:
             self.pdf.text(x, y, text)
     
     def create_title_page(self, title: str, subtitle: str = None, 
-                         company: str = "מערכת ניתוח נתונים", date: str = None):
+                         company: str = None, date: str = None):
         """יצירת דף כותרת מעוצב"""
         try:
             self.pdf.add_page()
@@ -380,11 +383,13 @@ class HebrewPDFReport:
                 self.pdf.set_font('Hebrew', '', 16)
                 self._add_rtl_text(0, 100, subtitle, 'C')
             
-            # Company name
+            # Company name - use i18n default if not provided
+            if company is None:
+                company = t('data_analysis_system')
             self.pdf.set_font('Hebrew', 'B', 14)
             self._add_rtl_text(0, 120, company, 'C')
             
-            # Date with timezone support
+            # Date with timezone support - show real date/time at top
             if date is None:
                 try:
                     # Try to use zoneinfo for proper timezone support
@@ -402,7 +407,7 @@ class HebrewPDFReport:
                     date = datetime.now().strftime("%d/%m/%Y %H:%M")
             
             self.pdf.set_font('Hebrew', '', 12)
-            date_text = f"תאריך הדוח: {date}"
+            date_text = f"{t('report_date')}: {date}"
             self._add_rtl_text(0, 140, date_text, 'C')
             
             # Decorative lines
@@ -412,7 +417,7 @@ class HebrewPDFReport:
             
             # Page info
             self.pdf.set_font('Hebrew', '', 10)
-            page_info = "דוח נוצר באופן אוטומטי על ידי מערכת ניתוח הנתונים"
+            page_info = t('auto_generated_report')
             self._add_rtl_text(0, 260, page_info, 'C')
             
             self.current_y = 180
@@ -668,17 +673,17 @@ class HebrewPDFReport:
     def add_data_summary(self, basic_info: Dict[str, Any]):
         """הוספת סיכום נתונים מפורט"""
         try:
-            self.add_section_header("סיכום נתונים", 1)
+            self.add_section_header(t('data_summary'), 1)
             
             # Data dimensions
             if 'shape' in basic_info:
                 rows, cols = basic_info['shape']
-                self.add_text(f"מימדי הנתונים: {rows:,} שורות × {cols} עמודות", 12, bold=True)
+                self.add_text(f"{t('data_dimensions')}: {rows:,} {t('rows')} × {cols} {t('columns')}", 12, bold=True)
             
             # Memory usage
             if 'memory_usage' in basic_info:
                 memory_mb = basic_info['memory_usage'] / (1024 * 1024)
-                self.add_text(f"שימוש בזיכרון: {memory_mb:.2f} מגה-בייט", 12)
+                self.add_text(f"{t('memory_usage')}: {memory_mb:.2f} {t('megabytes')}", 12)
             
             # Data types summary
             if 'dtypes' in basic_info:
@@ -687,31 +692,31 @@ class HebrewPDFReport:
                     dtype_str = str(dtype)
                     dtype_counts[dtype_str] = dtype_counts.get(dtype_str, 0) + 1
                 
-                self.add_text("סוגי נתונים:", 12, bold=True)
+                self.add_text(f"{t('data_types')}:", 12, bold=True)
                 for dtype, count in dtype_counts.items():
-                    self.add_text(f"  {dtype}: {count} עמודות", 11, indent=10)
+                    self.add_text(f"  {dtype}: {count} {t('columns')}", 11, indent=10)
             
             # Missing values
             if 'null_counts' in basic_info:
                 total_nulls = sum(basic_info['null_counts'].values())
                 if total_nulls > 0:
-                    self.add_text(f"סך ערכים חסרים: {total_nulls:,}", 12, bold=True)
+                    self.add_text(f"סך {t('missing_values')}: {total_nulls:,}", 12, bold=True)
                     # Show columns with missing values
                     for col, null_count in basic_info['null_counts'].items():
                         if null_count > 0:
                             pct = (null_count / basic_info['shape'][0]) * 100
                             self.add_text(f"  {col}: {null_count:,} ({pct:.1f}%)", 11, indent=10)
                 else:
-                    self.add_text("✓ אין ערכים חסרים בנתונים", 12, bold=True)
+                    self.add_text(f"✓ אין {t('missing_values')} בנתונים", 12, bold=True)
             
             # Duplicates
             if 'duplicate_rows' in basic_info:
                 dup_count = basic_info['duplicate_rows']
                 if dup_count > 0:
                     dup_pct = (dup_count / basic_info['shape'][0]) * 100
-                    self.add_text(f"שורות כפולות: {dup_count} ({dup_pct:.1f}%)", 12, bold=True)
+                    self.add_text(f"{t('duplicate_rows')}: {dup_count} ({dup_pct:.1f}%)", 12, bold=True)
                 else:
-                    self.add_text("✓ אין שורות כפולות", 12, bold=True)
+                    self.add_text(t('no_duplicates'), 12, bold=True)
             
         except Exception as e:
             logger.error(f"Error adding data summary: {e}")
@@ -719,7 +724,7 @@ class HebrewPDFReport:
     def add_column_analysis(self, column_details: Dict[str, Any]):
         """ניתוח מפורט של עמודות"""
         try:
-            self.add_section_header("ניתוח עמודות", 1)
+            self.add_section_header(t('column_analysis'), 1)
             
             for col_name, col_info in column_details.items():
                 self.add_section_header(f"עמודה: {col_name}", 2)
@@ -730,23 +735,23 @@ class HebrewPDFReport:
                 
                 # Null values
                 if col_info['null_count'] > 0:
-                    self.add_text(f"ערכים חסרים: {col_info['null_count']:,} ({col_info['null_percentage']}%)", 
+                    self.add_text(f"{t('missing_values')}: {col_info['null_count']:,} ({col_info['null_percentage']}%)", 
                                 11, indent=5)
                 
                 # Numeric column statistics
                 if 'mean' in col_info:
-                    self.add_text("סטטיסטיקות:", 11, bold=True, indent=5)
-                    self.add_text(f"ממוצע: {col_info['mean']}", 10, indent=15)
-                    self.add_text(f"חציון: {col_info['median']}", 10, indent=15)
-                    self.add_text(f"סטיית תקן: {col_info['std']}", 10, indent=15)
-                    self.add_text(f"מינימום: {col_info['min']}", 10, indent=15)
-                    self.add_text(f"מקסימום: {col_info['max']}", 10, indent=15)
-                    self.add_text(f"רבעון ראשון: {col_info['q25']}", 10, indent=15)
-                    self.add_text(f"רבעון שלישי: {col_info['q75']}", 10, indent=15)
+                    self.add_text(f"{t('statistics')}:", 11, bold=True, indent=5)
+                    self.add_text(f"{t('mean')}: {col_info['mean']}", 10, indent=15)
+                    self.add_text(f"{t('median')}: {col_info['median']}", 10, indent=15)
+                    self.add_text(f"{t('std_dev')}: {col_info['std']}", 10, indent=15)
+                    self.add_text(f"{t('minimum')}: {col_info['min']}", 10, indent=15)
+                    self.add_text(f"{t('maximum')}: {col_info['max']}", 10, indent=15)
+                    self.add_text(f"{t('first_quartile')}: {col_info['q25']}", 10, indent=15)
+                    self.add_text(f"{t('third_quartile')}: {col_info['q75']}", 10, indent=15)
                 
                 # Categorical column analysis
                 elif 'top_values' in col_info:
-                    self.add_text("ערכים נפוצים:", 11, bold=True, indent=5)
+                    self.add_text(f"{t('common_values')}:", 11, bold=True, indent=5)
                     for value, count in col_info['top_values'].items():
                         self.add_text(f"{value}: {count}", 10, indent=15)
                     
@@ -761,7 +766,7 @@ class HebrewPDFReport:
     def add_insights_section(self, insights: List[str]):
         """הוספת סעיף תובנות"""
         try:
-            self.add_section_header("תובנות עיקריות", 1)
+            self.add_section_header(t('key_findings'), 1)
             
             for i, insight in enumerate(insights, 1):
                 bullet = "•" if i <= 10 else f"{i}."
@@ -794,7 +799,7 @@ class HebrewPDFReport:
     def add_outliers_section(self, outliers: Dict[str, int]):
         """הוספת ניתוח ערכים חריגים"""
         try:
-            self.add_section_header("ניתוח ערכים חריגים", 1)
+            self.add_section_header(t('outlier_analysis'), 1)
             
             outlier_cols = [col for col, count in outliers.items() if count > 0]
             
@@ -815,7 +820,7 @@ class HebrewPDFReport:
     def add_recommendations_section(self, analysis_results: Dict[str, Any], df: pd.DataFrame):
         """הוספת המלצות מותאמות אישית"""
         try:
-            self.add_section_header("המלצות לשיפור", 1)
+            self.add_section_header(t('recommendations'), 1)
             
             recommendations = []
             
@@ -1008,27 +1013,27 @@ class HebrewPDFReport:
             if not chart_files:
                 return
             
-            self.add_section_header("תרשימים וויזואליזציות", 1)
+            self.add_section_header(t('charts_and_visualizations'), 1)
             
             chart_descriptions = {
-                'correlation_heatmap.png': 'מטריצת קורלציות - מציגה את הקשרים בין העמודות המספריות',
-                'missing_values.png': 'ערכים חסרים - מציג את כמות הערכים החסרים בכל עמודה',
-                'distributions.png': 'התפלגויות - מציג את התפלגות הערכים בעמודות המספריות',
-                'top_categories': 'קטגוריות נפוצות - מציג את הערכים השכיחים ביותר'
+                'correlation_heatmap.png': t('correlation_matrix'),
+                'missing_values.png': t('missing_values_chart'),
+                'distributions.png': t('distributions_chart'),
+                'top_categories': t('top_categories_chart')
             }
             
             for i, chart_file in enumerate(chart_files):
                 if os.path.exists(chart_file):
                     # Add chart description
                     filename = os.path.basename(chart_file)
-                    description = "תרשים נתונים"
+                    description = t('data_visualization')
                     
                     for key, desc in chart_descriptions.items():
                         if key in filename:
                             description = desc
                             break
                     
-                    self.add_text(f"תרשים {i+1}: {description}", 12, bold=True)
+                    self.add_text(f"{t('chart')} {i+1}: {description}", 12, bold=True)
                     
                     # Add the chart
                     self.add_chart(chart_file)
@@ -1060,6 +1065,81 @@ class HebrewPDFReport:
         except Exception as e:
             logger.error(f"Error adding chart: {e}")
     
+    def add_statistical_summary_section(self, df: pd.DataFrame):
+        """
+        Add statistical summary table at the end of the report (after charts)
+        Renders pandas describe() of numeric columns as a PNG and embeds into PDF
+        """
+        try:
+            logger.info("Adding statistical summary section")
+            
+            # Get numeric columns
+            numeric_df = df.select_dtypes(include=[np.number])
+            
+            if numeric_df.empty:
+                logger.warning("No numeric columns found for statistical summary")
+                return
+            
+            # Add section header with i18n
+            self.add_section_header(t('statistical_summary'), 1)
+            self.add_text(t('statistical_summary_subtitle'), 11, indent=5)
+            
+            # Generate statistical summary using pandas describe
+            stats_df = numeric_df.describe()
+            
+            # Create a matplotlib figure for the statistical table
+            fig, ax = plt.subplots(figsize=(12, max(6, len(stats_df.columns) * 0.8)))
+            ax.axis('tight')
+            ax.axis('off')
+            
+            # Format the statistics table for better readability
+            stats_display = stats_df.round(3)
+            
+            # Create table
+            table = ax.table(cellText=stats_display.values,
+                           rowLabels=stats_display.index,
+                           colLabels=stats_display.columns,
+                           cellLoc='center',
+                           loc='center',
+                           bbox=[0, 0, 1, 1])
+            
+            # Style the table
+            table.auto_set_font_size(False)
+            table.set_fontsize(9)
+            table.scale(1.2, 2)
+            
+            # Style header row
+            for i in range(len(stats_display.columns)):
+                table[(0, i)].set_facecolor('#E6E6FA')
+                table[(0, i)].set_text_props(weight='bold')
+            
+            # Style index column
+            for i in range(len(stats_display.index)):
+                table[(i+1, -1)].set_facecolor('#F0F0F0')
+                table[(i+1, -1)].set_text_props(weight='bold')
+            
+            plt.title(t('statistical_summary'), fontsize=14, fontweight='bold', pad=20)
+            
+            # Save as temporary image
+            temp_stats_path = 'temp_statistical_summary.png'
+            plt.savefig(temp_stats_path, dpi=150, bbox_inches='tight', 
+                       facecolor='white', edgecolor='none')
+            plt.close()
+            
+            # Add the statistical summary chart to PDF
+            self.add_chart(temp_stats_path)
+            
+            # Clean up temporary file
+            try:
+                os.remove(temp_stats_path)
+            except:
+                pass
+                
+            logger.info("Statistical summary section added successfully")
+            
+        except Exception as e:
+            logger.error(f"Error adding statistical summary section: {e}")
+    
     def generate_comprehensive_report(self, df: pd.DataFrame, 
                                     output_path: str = "data_analysis_report.pdf") -> str:
         """יצירת דוח מקיף מנתונים אמיתיים"""
@@ -1073,20 +1153,21 @@ class HebrewPDFReport:
             
             # Create title page
             self.create_title_page(
-                title="דוח ניתוח נתונים מקיף",
-                subtitle="ניתוח אוטומטי מלא של מערך הנתונים"
+                title=t('comprehensive_report_title'),
+                subtitle=t('comprehensive_report_subtitle')
             )
             
             # Add table of contents
-            self.add_section_header("תוכן עניינים", 1)
+            self.add_section_header(t('table_of_contents'), 1)
             toc_items = [
-                "1. סיכום נתונים",
-                "2. ניתוח עמודות", 
-                "3. תובנות עיקריות",
-                "4. ניתוח קורלציות",
-                "5. ניתוח ערכים חריגים",
-                "6. המלצות לשיפור",
-                "7. תרשימים וויזואליזציות"
+                f"1. {t('data_summary')}",
+                f"2. {t('column_analysis')}", 
+                f"3. {t('key_findings')}",
+                f"4. ניתוח קורלציות",  # Keep as is since not in core requirements
+                f"5. {t('outlier_analysis')}",
+                f"6. {t('recommendations')}",
+                f"7. {t('charts_and_visualizations')}",
+                f"8. {t('statistical_summary')}"
             ]
             
             for item in toc_items:
@@ -1115,6 +1196,9 @@ class HebrewPDFReport:
             chart_files = self.create_visualizations(df)
             if chart_files:
                 self.add_charts_section(chart_files)
+            
+            # Add statistical summary section after charts
+            self.add_statistical_summary_section(df)
             
             # Save the report
             self.pdf.output(output_path)
@@ -1174,19 +1258,28 @@ def analyze_csv_file(csv_file_path: str, output_pdf_path: str = None) -> str:
         str: Path to generated PDF report
     """
     try:
-        # Read CSV file
-        df = pd.read_csv(csv_file_path, encoding='utf-8')
+        logger.info(f"Starting CSV file analysis: {csv_file_path}")
+        
+        # Read CSV file with automatic delimiter detection
+        df = pd.read_csv(csv_file_path, sep=None, engine='python', encoding='utf-8')
+        logger.info(f"CSV file loaded successfully, shape: {df.shape}")
+        
+        # Preprocess the data to handle messy data gracefully
+        from data_analysis import preprocess_df
+        df = preprocess_df(df)
+        logger.info(f"Data preprocessing completed, final shape: {df.shape}")
         
         # Set default output path if not provided
         if output_pdf_path is None:
             base_name = os.path.splitext(os.path.basename(csv_file_path))[0]
             output_pdf_path = f"דוח_ניתוח_{base_name}.pdf"
         
+        logger.info(f"Generating PDF report: {output_pdf_path}")
         # Generate report
         return generate_complete_data_report(df, output_pdf_path, include_charts=True)
         
     except Exception as e:
-        logger.error(f"Error analyzing CSV file: {e}")
+        logger.error(f"Error analyzing CSV file {csv_file_path}: {e}")
         return None
 
 
@@ -1205,19 +1298,28 @@ def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0,
         str: Path to generated PDF report
     """
     try:
+        logger.info(f"Starting Excel file analysis: {excel_file_path}, sheet: {sheet_name}")
+        
         # Read Excel file
         df = pd.read_excel(excel_file_path, sheet_name=sheet_name)
+        logger.info(f"Excel file loaded successfully, shape: {df.shape}")
+        
+        # Preprocess the data to handle messy data gracefully
+        from data_analysis import preprocess_df
+        df = preprocess_df(df)
+        logger.info(f"Data preprocessing completed, final shape: {df.shape}")
         
         # Set default output path if not provided
         if output_pdf_path is None:
             base_name = os.path.splitext(os.path.basename(excel_file_path))[0]
             output_pdf_path = f"דוח_ניתוח_{base_name}.pdf"
         
+        logger.info(f"Generating PDF report: {output_pdf_path}")
         # Generate report
         return generate_complete_data_report(df, output_pdf_path, include_charts=True)
         
     except Exception as e:
-        logger.error(f"Error analyzing Excel file: {e}")
+        logger.error(f"Error analyzing Excel file {excel_file_path}: {e}")
         return None
 
 

@@ -15,6 +15,107 @@ warnings.filterwarnings('ignore')
 
 logger = logging.getLogger(__name__)
 
+def preprocess_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Preprocess DataFrame to handle messy data gracefully
+    - Clean column names
+    - Coerce number-like strings to numeric
+    - Parse obvious date strings to datetime
+    
+    Args:
+        df: Input DataFrame
+        
+    Returns:
+        pd.DataFrame: Preprocessed DataFrame
+    """
+    try:
+        logger.info(f"DataFrame shape before preprocessing: rows={len(df)}, cols={len(df.columns)}")
+        
+        # Make a copy to avoid modifying original
+        processed_df = df.copy()
+        
+        # Clean column names - remove extra spaces, normalize
+        processed_df.columns = processed_df.columns.astype(str).str.strip()
+        logger.info(f"Column names cleaned, found {len(processed_df.columns)} columns")
+        
+        # Process each column
+        for col in processed_df.columns:
+            col_data = processed_df[col]
+            
+            # Skip if all values are null
+            if col_data.isnull().all():
+                logger.info(f"Column '{col}' is completely empty")
+                continue
+                
+            # Try to convert number-like strings to numeric
+            if col_data.dtype == 'object':
+                # Check if column might contain numbers
+                sample_values = col_data.dropna().head(100)
+                numeric_count = 0
+                
+                for val in sample_values:
+                    if isinstance(val, str):
+                        # Clean the string for numeric conversion
+                        clean_val = val.strip()
+                        # Handle different number formats: "1 234", "12,5", "1,234.56", "1.234,56"
+                        if clean_val.replace(' ', '').replace(',', '').replace('.', '').isdigit():
+                            numeric_count += 1
+                        elif clean_val.replace(' ', '').replace(',', '.').replace('.', '', 1).isdigit():
+                            numeric_count += 1
+                
+                # If more than 70% look numeric, try conversion
+                if len(sample_values) > 0 and numeric_count / len(sample_values) > 0.7:
+                    logger.info(f"Attempting numeric conversion for column '{col}'")
+                    
+                    def convert_to_numeric(val):
+                        if pd.isna(val) or val == '':
+                            return np.nan
+                        if isinstance(val, (int, float)):
+                            return float(val)
+                        if isinstance(val, str):
+                            clean_val = val.strip()
+                            # Handle space as thousand separator: "1 234" -> "1234"
+                            clean_val = clean_val.replace(' ', '')
+                            # Handle European decimal format: "12,5" -> "12.5"
+                            if ',' in clean_val and '.' not in clean_val:
+                                clean_val = clean_val.replace(',', '.')
+                            # Handle US thousand separator: "1,234.56" -> "1234.56"
+                            elif ',' in clean_val and '.' in clean_val:
+                                clean_val = clean_val.replace(',', '')
+                            # Handle European format with . as thousand separator: "1.234,56" -> "1234.56"
+                            elif clean_val.count('.') > 1 or (clean_val.count('.') == 1 and clean_val.count(',') == 1):
+                                if ',' in clean_val:
+                                    clean_val = clean_val.replace('.', '').replace(',', '.')
+                            try:
+                                return float(clean_val)
+                            except:
+                                return np.nan
+                        return np.nan
+                    
+                    processed_df[col] = processed_df[col].apply(convert_to_numeric)
+                    
+                # Try to parse as datetime for date-like strings
+                elif any(keyword in col.lower() for keyword in ['date', 'time', 'created', 'updated', 'timestamp']):
+                    logger.info(f"Attempting datetime conversion for column '{col}'")
+                    try:
+                        # Use dayfirst=True heuristic for DD/MM/YYYY format common in many locales
+                        processed_df[col] = pd.to_datetime(processed_df[col], dayfirst=True, errors='ignore')
+                    except Exception as e:
+                        logger.warning(f"Could not convert column '{col}' to datetime: {e}")
+                        
+        logger.info(f"DataFrame shape after preprocessing: rows={len(processed_df)}, cols={len(processed_df.columns)}")
+        
+        # Log data types after preprocessing
+        numeric_cols = processed_df.select_dtypes(include=[np.number]).columns
+        datetime_cols = processed_df.select_dtypes(include=['datetime64']).columns
+        logger.info(f"Found {len(numeric_cols)} numeric columns and {len(datetime_cols)} datetime columns after preprocessing")
+        
+        return processed_df
+        
+    except Exception as e:
+        logger.error(f"Error in preprocess_df: {e}")
+        return df  # Return original if preprocessing fails
+
 class DataAnalyzer:
     def __init__(self, df: pd.DataFrame):
         self.df = df.copy()
