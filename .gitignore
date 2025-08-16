@@ -8,7 +8,12 @@ __pycache__/
 *.db
 /temp_charts/
 /.env
+/.env.*
 /credentials.json
+*.key
+*.pem
+*.p12
+*.pfx
 .DS_Store
 Thumbs.db
 
@@ -30,3 +35,14 @@ htmlcov/
 *.jpg
 *.jpeg
 
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS-specific files
+Thumbs.db
+.DS_Store
+desktop.ini
