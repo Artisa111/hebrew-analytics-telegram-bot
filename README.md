@@ -67,8 +67,7 @@ worker: python simple_bot.py
 - Matplotlib font warnings are harmless; charts still render
 - If charts fail, check the file columns and types; try sample CSV
 
-### License
-MIT
+
 
 ## 🤝 תרומה לפרויקט
 
@@ -80,7 +79,7 @@ MIT
 4. Push ל-branch
 5. פתח Pull Request
 
-## 📄 רישיון
+
 
 פרויקט זה מוגן תחת רישיון MIT. ראה קובץ `LICENSE` לפרטים.
 
