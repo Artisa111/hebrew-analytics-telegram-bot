@@ -29,6 +29,11 @@ Production‑ready Telegram bot for advanced, automated data analytics — fully
 - `run_bot.py` – alt runner
 - `requirements.txt` – dependencies
 
+## Security and secrets
+- Never commit tokens or credentials to the repository. Use environment variables instead.
+- Required variable: `BOT_TOKEN`.
+- For local development, keep a `.env` file (not committed) and export variables before running. See SECURITY.md for details.
+
 ### Local Run
 1) Create a bot via BotFather and copy the token
 2) Create venv and install deps:
