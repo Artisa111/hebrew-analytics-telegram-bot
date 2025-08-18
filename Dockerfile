@@ -40,4 +40,4 @@ RUN mkdir -p /app/temp /app/charts /app/reports
 RUN chmod -R 755 /app
 
 # Default command
-CMD ["python", "main.py"]
+CMD ["python", "simple_bot.py"]
