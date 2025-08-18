@@ -83,6 +83,7 @@ python-3.11.8
 5. Find your bot in Telegram and send /start. Upload a CSV/Excel and try the Advanced PDF report.
 
 ### Notes for Railway
+- **Default deployment type**: Worker process (from Procfile) — no HTTP port required.
 - The bot runs via long polling — no extra web server is required.
 - Ensure BOT_TOKEN is set. Without it, the app will exit on startup.
 - If you see matplotlib backend/display errors, set MPLBACKEND=Agg.
