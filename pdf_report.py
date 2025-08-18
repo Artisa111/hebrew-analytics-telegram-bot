@@ -1798,10 +1798,13 @@ def generate_complete_data_report(df: pd.DataFrame,
     try:
         logger.info(f"Starting complete data report generation")
         
-        # Validate input
-        if df is None or df.empty:
-            logger.error("DataFrame is empty or None")
+        # Validate input - allow empty DataFrames to trigger safe mode
+        if df is None:
+            logger.error("DataFrame is None")
             return None
+            
+        if df.empty:
+            logger.warning("DataFrame is empty - will activate safe mode")
         
         logger.info(f"Input DataFrame shape: {df.shape}")
         
