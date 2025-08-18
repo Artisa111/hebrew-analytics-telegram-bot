@@ -336,6 +336,27 @@ class HebrewPDFReport:
             except:
                 pass
     
+    def _ensure_visible_text_state(self):
+        """Ensure visible text drawing state before rendering text"""
+        try:
+            # Set black text color for visibility
+            self.pdf.set_text_color(0, 0, 0)
+            # Set white fill color as default background
+            self.pdf.set_fill_color(255, 255, 255)
+            # Set black draw color for borders/lines
+            self.pdf.set_draw_color(0, 0, 0)
+            
+            # Try to set text rendering mode to FILL (visible) if available
+            if hasattr(self.pdf, 'set_text_rendering_mode'):
+                self.pdf.set_text_rendering_mode(0)  # 0 = FILL mode (visible)
+            
+            # Try to set full alpha/opacity if available
+            if hasattr(self.pdf, 'set_alpha'):
+                self.pdf.set_alpha(1.0)  # Full opacity
+                
+        except Exception as e:
+            logger.warning(f"Could not set all text rendering states: {e}")
+    
     def _get_text_width(self, text: str) -> float:
         """חישוב רוחב טקסט"""
         try:
@@ -346,6 +367,9 @@ class HebrewPDFReport:
     def _add_rtl_text(self, x: float, y: float, text: str, align: str = 'R'):
         """הוספת טקסט מימין לשמאל"""
         try:
+            # Ensure visible text state before drawing
+            self._ensure_visible_text_state()
+            
             fixed_text = self._fix_hebrew_text(text)
             
             if align == 'R':
@@ -364,6 +388,8 @@ class HebrewPDFReport:
             
         except Exception as e:
             logger.error(f"Error adding RTL text: {e}")
+            # Fallback with visible state
+            self._ensure_visible_text_state()
             self.pdf.text(x, y, text)
     
     def create_title_page(self, title: str, subtitle: str = None, 
@@ -443,6 +469,9 @@ class HebrewPDFReport:
                 y_line = self.current_y + 2
                 self.pdf.line(self.margin, y_line, self.page_width - self.margin, y_line)
             
+            # Restore default text state after header for subsequent body text
+            self._ensure_visible_text_state()
+            
             self.current_y += 15
             
         except Exception as e:
@@ -452,6 +481,9 @@ class HebrewPDFReport:
                  indent: int = 0):
         """הוספת טקסט עם תמיכה מלאה ב-RTL"""
         try:
+            # Ensure visible text state for body text
+            self._ensure_visible_text_state()
+            
             # Set font
             if bold:
                 self.pdf.set_font('Hebrew', 'B', font_size)
