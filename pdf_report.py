@@ -25,6 +25,7 @@ import warnings
 import requests
 import platform
 import tempfile
+import uuid
 
 warnings.filterwarnings('ignore')
 
@@ -47,6 +48,11 @@ class HebrewPDFReport:
         self.page_height = 297
         self.margin = 20
         self.rtl_support = True
+        
+        # Generate unique run_id for asset collision prevention
+        self.run_id = str(uuid.uuid4())[:8]  # Use first 8 chars for readability
+        logger.debug(f"Initialized PDF report with run_id: {self.run_id}")
+        
         # Now setup Hebrew support with all attributes initialized
         self.setup_hebrew_support()
     
@@ -343,28 +349,55 @@ class HebrewPDFReport:
         except:
             return len(text) * 2  # Rough estimation
     
+    def _ensure_visible_text_state(self):
+        """Reset drawing state to ensure text is visible on white background"""
+        try:
+            # Set text color to black
+            self.pdf.set_text_color(0, 0, 0)
+            # Set fill color to white (for backgrounds)
+            self.pdf.set_fill_color(255, 255, 255)
+            # Set draw color to black (for lines/borders)
+            self.pdf.set_draw_color(0, 0, 0)
+            # Reset text rendering mode to fill if supported
+            # Note: FPDF2 doesn't have set_text_render_mode, but the above should suffice
+        except Exception as e:
+            logger.debug(f"Error resetting drawing state: {e}")
+            # Continue anyway - this is a safety measure
+    
     def _add_rtl_text(self, x: float, y: float, text: str, align: str = 'R'):
-        """הוספת טקסט מימין לשמאל"""
+        """הוספת טקסט מימין לשמאל - with safe positioning"""
         try:
             fixed_text = self._fix_hebrew_text(text)
             
+            # Ensure visible drawing state
+            self._ensure_visible_text_state()
+            
             if align == 'R':
-                # Right align - calculate x position from right margin
+                # Right align - calculate x position from right margin with safety bounds
                 text_width = self._get_text_width(fixed_text)
                 x_pos = self.page_width - self.margin - text_width
+                # Prevent negative positioning
+                x_pos = max(self.margin, x_pos)
             elif align == 'C':
                 # Center align
                 text_width = self._get_text_width(fixed_text)
                 x_pos = (self.page_width - text_width) / 2
+                # Ensure within bounds
+                x_pos = max(self.margin, min(x_pos, self.page_width - self.margin - text_width))
             else:
                 # Left align
-                x_pos = x
+                x_pos = max(self.margin, x)
             
             self.pdf.text(x_pos, y, fixed_text)
             
         except Exception as e:
             logger.error(f"Error adding RTL text: {e}")
-            self.pdf.text(x, y, text)
+            # Safe fallback with basic positioning
+            try:
+                self._ensure_visible_text_state()
+                self.pdf.text(max(self.margin, x), y, text)
+            except:
+                pass  # Fail silently rather than crash
     
     def create_title_page(self, title: str, subtitle: str = None, 
                          company: str = "מערכת ניתוח נתונים", date: str = None):
@@ -443,6 +476,9 @@ class HebrewPDFReport:
                 y_line = self.current_y + 2
                 self.pdf.line(self.margin, y_line, self.page_width - self.margin, y_line)
             
+            # CRITICAL: Reset drawing state after background fills
+            self._ensure_visible_text_state()
+            
             self.current_y += 15
             
         except Exception as e:
@@ -450,8 +486,11 @@ class HebrewPDFReport:
     
     def add_text(self, text: str, font_size: int = 12, bold: bool = False, 
                  indent: int = 0):
-        """הוספת טקסט עם תמיכה מלאה ב-RTL"""
+        """הוספת טקסט עם תמיכה מלאה ב-RTL using multi_cell for safer wrapping"""
         try:
+            # Ensure visible drawing state for body text
+            self._ensure_visible_text_state()
+            
             # Set font
             if bold:
                 self.pdf.set_font('Hebrew', 'B', font_size)
@@ -463,19 +502,41 @@ class HebrewPDFReport:
                 self.pdf.add_page()
                 self.current_y = self.margin + 10
             
-            # Handle long text - wrap lines
-            max_width = self.page_width - 2 * self.margin - indent
-            lines = self._wrap_text_rtl(text, max_width)
+            # Apply Hebrew text fixes
+            fixed_text = self._fix_hebrew_text(text)
             
-            for line in lines:
-                if line.strip():  # Skip empty lines
-                    self._add_rtl_text(indent, self.current_y, line.strip(), 'R')
-                self.current_y += font_size * 0.4 + 2
+            # Set position with indent
+            x_pos = self.margin + indent
             
-            self.current_y += 3
+            # Use multi_cell for better RTL handling instead of manual wrapping
+            # Save current y position
+            self.pdf.set_xy(x_pos, self.current_y)
+            
+            # Calculate cell width
+            cell_width = self.page_width - 2 * self.margin - indent
+            
+            # Use multi_cell with RTL alignment for safe wrapping
+            self.pdf.multi_cell(
+                w=cell_width,
+                h=font_size * 0.4 + 2,
+                txt=fixed_text,
+                align='R',  # Right alignment for RTL
+                new_x="LEFT",  # Reset to left margin after cell
+                new_y="NEXT"   # Move to next line
+            )
+            
+            # Update current_y to track position after multi_cell
+            self.current_y = self.pdf.get_y() + 3
             
         except Exception as e:
             logger.error(f"Error adding text: {e}")
+            # Fallback to simple text positioning
+            try:
+                self._ensure_visible_text_state()
+                self._add_rtl_text(indent, self.current_y, text, 'R')
+                self.current_y += font_size * 0.4 + 5
+            except:
+                self.current_y += 15  # Just move down to avoid overlapping
     
     def _wrap_text_rtl(self, text: str, max_width: float) -> List[str]:
         """חלוקת טקסט ארוך לשורות עם תמיכה ב-RTL"""
@@ -1223,27 +1284,91 @@ class HebrewPDFReport:
                 analysis_results = {}
             
             # 1. Data preview section - always shows first few rows
-            self.add_data_preview_section(df)
+            try:
+                logger.debug("Adding data preview section")
+                self.add_data_preview_section(df)
+            except Exception as e:
+                logger.error(f"Error in data preview section: {e}")
+                # Add fallback section
+                try:
+                    self.add_section_header(t("data_preview_title"), 1)
+                    self.add_text("Error displaying data preview", 12)
+                except:
+                    pass
             
             # 2. Missing values section - bar chart or note if none missing
-            self.add_missing_values_section(df)
+            try:
+                logger.debug("Adding missing values section")
+                self.add_missing_values_section(df)
+            except Exception as e:
+                logger.error(f"Error in missing values section: {e}")
+                try:
+                    self.add_section_header(t("missing_values_title"), 1)
+                    self.add_text("Error analyzing missing values", 12)
+                except:
+                    pass
             
             # 3. Categorical distributions - auto-detect and show top values
-            self.add_categorical_distributions_section(df)
+            try:
+                logger.debug("Adding categorical distributions section")
+                self.add_categorical_distributions_section(df)
+            except Exception as e:
+                logger.error(f"Error in categorical distributions section: {e}")
+                try:
+                    self.add_section_header(t("categorical_title"), 1)
+                    self.add_text("Error analyzing categorical data", 12)
+                except:
+                    pass
             
             # 4. Numeric distributions - histograms and statistics
-            self.add_numeric_distributions_section(df)
+            try:
+                logger.debug("Adding numeric distributions section")
+                self.add_numeric_distributions_section(df)
+            except Exception as e:
+                logger.error(f"Error in numeric distributions section: {e}")
+                try:
+                    self.add_section_header(t("numeric_title"), 1)
+                    self.add_text("Error analyzing numeric data", 12)
+                except:
+                    pass
             
             # 5. Statistical summary - df.describe() as text
-            self.add_statistical_summary_section(df)
+            try:
+                logger.debug("Adding statistical summary section")
+                self.add_statistical_summary_section(df)
+            except Exception as e:
+                logger.error(f"Error in statistical summary section: {e}")
+                try:
+                    self.add_section_header(t("stats_summary_title"), 1)
+                    self.add_text("Error generating statistical summary", 12)
+                except:
+                    pass
             
             # 6. Outliers section - IQR-based detection
-            self.add_outliers_section(df)
+            try:
+                logger.debug("Adding outliers section")
+                self.add_outliers_section(df)
+            except Exception as e:
+                logger.error(f"Error in outliers section: {e}")
+                try:
+                    self.add_section_header(t("outliers_title"), 1)
+                    self.add_text("Error detecting outliers", 12)
+                except:
+                    pass
             
             # 7. Recommendations section - rules-based recommendations
-            self.add_recommendations_section(analysis_results, df)
+            try:
+                logger.debug("Adding recommendations section")
+                self.add_recommendations_section(analysis_results, df)
+            except Exception as e:
+                logger.error(f"Error in recommendations section: {e}")
+                try:
+                    self.add_section_header(t("recommendations_title"), 1)
+                    self.add_text("Error generating recommendations", 12)
+                except:
+                    pass
             
-            logger.info("All guaranteed sections added successfully")
+            logger.info("All guaranteed sections processing completed")
             
         except Exception as e:
             logger.error(f"Error in add_guaranteed_sections: {e}")
@@ -1275,10 +1400,12 @@ class HebrewPDFReport:
             logger.error(f"Error adding recommendations: {e}")
     
     def create_visualizations(self, df: pd.DataFrame, output_dir: str = "charts") -> List[str]:
-        """יצירת ויזואליזציות של הנתונים"""
+        """יצירת ויזואליזציות של הנתונים with unique filenames per run"""
         try:
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
+            # Create per-run directory to avoid conflicts
+            unique_output_dir = os.path.join(output_dir, f"run_{self.run_id}")
+            if not os.path.exists(unique_output_dir):
+                os.makedirs(unique_output_dir)
             
             chart_files = []
             
@@ -1296,7 +1423,7 @@ class HebrewPDFReport:
                 plt.title('מטריצת קורלציות', fontsize=16, pad=20)
                 plt.tight_layout()
                 
-                chart_path = os.path.join(output_dir, 'correlation_heatmap.png')
+                chart_path = os.path.join(unique_output_dir, f'correlation_heatmap_{self.run_id}.png')
                 plt.savefig(chart_path, dpi=300, bbox_inches='tight')
                 plt.close()
                 chart_files.append(chart_path)
@@ -1313,7 +1440,7 @@ class HebrewPDFReport:
                 plt.ylabel('מספר ערכים חסרים')
                 plt.tight_layout()
                 
-                chart_path = os.path.join(output_dir, 'missing_values.png')
+                chart_path = os.path.join(unique_output_dir, f'missing_values_{self.run_id}.png')
                 plt.savefig(chart_path, dpi=300, bbox_inches='tight')
                 plt.close()
                 chart_files.append(chart_path)
@@ -1341,7 +1468,7 @@ class HebrewPDFReport:
                     axes[i].set_visible(False)
                 
                 plt.tight_layout()
-                chart_path = os.path.join(output_dir, 'distributions.png')
+                chart_path = os.path.join(unique_output_dir, f'distributions_{self.run_id}.png')
                 plt.savefig(chart_path, dpi=300, bbox_inches='tight')
                 plt.close()
                 chart_files.append(chart_path)
@@ -1359,7 +1486,7 @@ class HebrewPDFReport:
                     plt.ylabel('תכיפות')
                     plt.tight_layout()
                     
-                    chart_path = os.path.join(output_dir, f'top_categories_{col}.png')
+                    chart_path = os.path.join(unique_output_dir, f'top_categories_{col}_{self.run_id}.png')
                     plt.savefig(chart_path, dpi=300, bbox_inches='tight')
                     plt.close()
                     chart_files.append(chart_path)
@@ -1369,6 +1496,118 @@ class HebrewPDFReport:
         except Exception as e:
             logger.error(f"Error creating visualizations: {e}")
             return []
+        finally:
+            # Clean up plot state
+            plt.close('all')
+    
+    def _cleanup_temp_files(self):
+        """Clean up temporary files created for this run"""
+        try:
+            # Clean up chart directory for this run
+            import shutil
+            charts_dir = os.path.join("charts", f"run_{self.run_id}")
+            if os.path.exists(charts_dir):
+                shutil.rmtree(charts_dir)
+                logger.debug(f"Cleaned up temporary directory: {charts_dir}")
+        except Exception as e:
+            logger.debug(f"Error cleaning up temp files: {e}")
+    
+    def _generate_safe_mode_report(self, original_df: pd.DataFrame, output_path: str) -> str:
+        """Generate minimal report when processed DataFrame is empty"""
+        try:
+            logger.info("Generating safe-mode report for empty processed DataFrame")
+            
+            # Create title page
+            title = t("report_title")
+            subtitle = "דוח בטוח - נתונים לא זמינים לעיבוד"  # Safe mode - data unavailable for processing
+            date_str = format_date_time()
+            
+            self.create_title_page(
+                title=title,
+                subtitle=subtitle,
+                date=date_str
+            )
+            
+            # Warning section
+            self.add_section_header("⚠️ אזהרה - נתונים ריקים לאחר עיבוד", 1)
+            warning_text = """
+הנתונים המקוריים הפכו לריקים לאחר שלב הקדם-עיבוד. 
+הסיבות האפשריות:
+• כל השורות הוכלו ערכים חסרים או לא תקינים
+• העמודות לא הכילו נתונים מובנים
+• קובץ הנתונים פגום או ריק
+• פורמט הנתונים לא נתמך
+            """.strip()
+            self.add_text(warning_text, 12)
+            
+            # Original data preview if available
+            if original_df is not None and not original_df.empty:
+                self.add_section_header("תצוגה מקורית של הנתונים", 1)
+                rows, cols = original_df.shape
+                self.add_text(f"מימדי הנתונים המקוריים: {rows:,} שורות × {cols} עמודות", 12, bold=True)
+                
+                # Show first few rows
+                try:
+                    preview_df = original_df.head(3)
+                    preview_text = preview_df.to_string(index=True, max_cols=5)
+                    self.add_text("דגימה מהנתונים המקוריים:", 12, bold=True)
+                    
+                    preview_lines = preview_text.split('\n')
+                    for line in preview_lines[:8]:  # Limit lines
+                        self.add_text(line, 10, indent=10)
+                        
+                    if len(preview_lines) > 8:
+                        self.add_text("...", 10, indent=10)
+                        
+                except Exception as e:
+                    self.add_text(f"שגיאה בתצוגת הנתונים: {e}", 12)
+            
+            # Metadata about original data
+            self.add_section_header("מטא-נתונים", 1)
+            if original_df is not None:
+                try:
+                    memory_bytes = original_df.memory_usage(deep=True).sum()
+                    memory_mb = memory_bytes / (1024 * 1024)
+                    self.add_text(f"שימוש בזיכרון: {memory_mb:.2f} MB", 12)
+                    
+                    # Data types
+                    dtype_counts = original_df.dtypes.value_counts()
+                    self.add_text("סוגי נתונים שזוהו:", 12, bold=True)
+                    for dtype, count in dtype_counts.items():
+                        self.add_text(f"  {dtype}: {count} עמודות", 11, indent=10)
+                        
+                except Exception as e:
+                    self.add_text(f"שגיאה בחישוב מטא-נתונים: {e}", 12)
+            
+            # Recommendations
+            self.add_section_header("המלצות", 1)
+            recommendations = [
+                "בדקו את פורמט הקובץ ותקינותו",
+                "ודאו שהנתונים אינם ריקים או פגומים", 
+                "נסו להעלות קובץ נתונים אחר",
+                "בדקו שהעמודות מכילות ערכים תקינים",
+                "פנו לתמיכה טכנית אם הבעיה חוזרת"
+            ]
+            
+            for rec in recommendations:
+                self.add_text(f"• {rec}", 11, indent=5)
+            
+            # Generate unique output path for safe mode
+            safe_output_path = output_path.replace('.pdf', f'_safe_{self.run_id}.pdf')
+            
+            # Save PDF
+            logger.info(f"Saving safe-mode PDF report to: {safe_output_path}")
+            self.pdf.output(safe_output_path)
+            
+            # Log final details
+            file_size = os.path.getsize(safe_output_path) if os.path.exists(safe_output_path) else 0
+            logger.info(f"Safe-mode report generated successfully: {safe_output_path} ({file_size:,} bytes)")
+            
+            return safe_output_path
+            
+        except Exception as e:
+            logger.error(f"Error generating safe-mode report: {e}")
+            return None
     
     def add_charts_section(self, chart_files: List[str]):
         """הוספת תרשימים לדוח"""
@@ -1438,9 +1677,10 @@ class HebrewPDFReport:
             logger.info("Preprocessing DataFrame for robust analysis...")
             processed_df = preprocess_df(df)
             
+            # SAFE MODE: Handle empty DataFrame after preprocessing
             if processed_df is None or processed_df.empty:
-                logger.error("DataFrame is empty after preprocessing")
-                return None
+                logger.warning("DataFrame is empty after preprocessing - activating safe mode")
+                return self._generate_safe_mode_report(df, output_path)
             
             logger.info(f"DataFrame preprocessing complete. New shape: {processed_df.shape}")
             
@@ -1506,27 +1746,35 @@ class HebrewPDFReport:
                 self.add_section_header(t("charts_visualizations"), 1)
                 self.add_text(t("error_chart_creation"), 12)
             
-            # 7. SAVE THE REPORT
-            logger.info(f"Saving PDF report to: {output_path}")
-            self.pdf.output(output_path)
+            # 7. SAVE THE REPORT with unique filename to prevent collisions
+            unique_output_path = output_path.replace('.pdf', f'_{self.run_id}.pdf')
+            logger.info(f"Saving PDF report to: {unique_output_path}")
+            self.pdf.output(unique_output_path)
             
             # Verify file was created
-            if os.path.exists(output_path):
-                file_size = os.path.getsize(output_path)
-                logger.info(f"Report generated successfully: {output_path} ({file_size:,} bytes)")
-                return output_path
+            if os.path.exists(unique_output_path):
+                file_size = os.path.getsize(unique_output_path)
+                logger.info(f"Report generated successfully: {unique_output_path} ({file_size:,} bytes)")
+                
+                # Clean up temporary files
+                self._cleanup_temp_files()
+                
+                return unique_output_path
             else:
                 logger.error("PDF file was not created")
                 return None
             
         except Exception as e:
             logger.error(f"Error generating comprehensive report: {e}")
-            # Try to save what we have
+            # Try to save what we have with unique filename
             try:
-                self.pdf.output(output_path)
-                if os.path.exists(output_path):
-                    logger.info(f"Partial report saved despite errors: {output_path}")
-                    return output_path
+                unique_output_path = output_path.replace('.pdf', f'_{self.run_id}.pdf')
+                self.pdf.output(unique_output_path)
+                if os.path.exists(unique_output_path):
+                    logger.info(f"Partial report saved despite errors: {unique_output_path}")
+                    # Clean up temporary files
+                    self._cleanup_temp_files()
+                    return unique_output_path
             except:
                 pass
             return None
