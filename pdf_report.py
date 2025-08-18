@@ -447,11 +447,21 @@ class HebrewPDFReport:
             
         except Exception as e:
             logger.error(f"Error adding section header: {e}")
+        finally:
+            # Reset colors to ensure subsequent text is black on white background
+            self.pdf.set_text_color(0, 0, 0)     # Black text
+            self.pdf.set_fill_color(255, 255, 255)  # White background
+            self.pdf.set_draw_color(0, 0, 0)     # Black lines
     
     def add_text(self, text: str, font_size: int = 12, bold: bool = False, 
                  indent: int = 0):
         """הוספת טקסט עם תמיכה מלאה ב-RTL"""
         try:
+            # Reset colors to ensure black text on white background
+            self.pdf.set_text_color(0, 0, 0)     # Black text
+            self.pdf.set_fill_color(255, 255, 255)  # White background
+            self.pdf.set_draw_color(0, 0, 0)     # Black lines
+            
             # Set font
             if bold:
                 self.pdf.set_font('Hebrew', 'B', font_size)
