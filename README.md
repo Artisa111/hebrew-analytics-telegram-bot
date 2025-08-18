@@ -113,6 +113,12 @@ The bot logs exactly which fonts are loaded:
 - ⚠️ "Using fallback core font - Hebrew support may be limited" - Hebrew text may not display correctly
 - If fonts are missing, the system automatically downloads Noto Sans Hebrew fonts at runtime
 
+### PDF Text Visibility 
+As of latest version, Advanced PDF reports ensure all body text is visible with proper rendering state:
+- **Fixed**: Previous issue where headers were visible but body text was invisible
+- **Automatic**: No code changes needed - the fix applies to all PDF generation
+- **Manual Test**: Run `python3 test_pdf_fix.py` or generate a sample PDF to verify text visibility
+
 ---
 
 ## Troubleshooting
