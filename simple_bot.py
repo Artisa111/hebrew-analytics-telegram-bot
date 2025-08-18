@@ -744,15 +744,15 @@ class FixedSimpleHebrewBot:
             if 'temp_dir' in locals():
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
-    async def read_data_file(self, file_path: str, file_extension: str):
-        """Read data file with multiple encoding support"""
-        try:
-            if file_extension == '.csv':
-                # Try different encodings for CSV
-                encodings = ['utf-8', 'latin-1', 'cp1255', 'iso-8859-8', 'cp1252']
-                for encoding in encodings:
-                    try:
-                        df = pd.read_csv(file_path, encoding=encoding)
+   async def read_data_file(self, file_path: str, file_extension: str):
+    """Read data file with multiple encoding support"""
+    try:
+        if file_extension == '.csv':
+            # Try different encodings for CSV
+            encodings = ['utf-8', 'latin-1', 'cp1255', 'iso-8859-8', 'cp1252']
+            for encoding in encodings:
+                try:
+                    df = pd.read_csv(file_path, encoding=encoding)  # ❌ NO SEPARATORS!
                         if isinstance(df, pd.DataFrame) and not df.empty:
                             logger.info(f"✅ CSV read successfully with encoding: {encoding}")
                             return df
