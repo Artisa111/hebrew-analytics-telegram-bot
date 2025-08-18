@@ -1,0 +1,15 @@
+# nixpacks.toml - Configuration for Railway Nixpacks builder
+# Prevents pip install failures under Python 3.12 by ensuring modern build tools
+
+[phases.install]
+dependsOn = ["setup"]
+cmds = [
+    # Upgrade pip, setuptools, and wheel first to avoid distutils issues
+    "pip install --upgrade pip setuptools wheel",
+    # Then install project requirements
+    "pip install -r requirements.txt"
+]
+
+[variables]
+# Prefer Python 3.11 for consistency with Dockerfile
+NIXPACKS_PYTHON_VERSION = "3.11.9"

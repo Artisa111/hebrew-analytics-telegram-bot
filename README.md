@@ -113,6 +113,21 @@ The bot logs exactly which fonts are loaded:
 - ⚠️ "Using fallback core font - Hebrew support may be limited" - Hebrew text may not display correctly
 - If fonts are missing, the system automatically downloads Noto Sans Hebrew fonts at runtime
 
+### Railway Build Troubleshooting
+If Railway builds fail with `ModuleNotFoundError: No module named 'distutils'` during pip install:
+
+**Option 1: Use Nixpacks with Python 3.11 (Recommended)**
+1. In Railway → Project Settings → Variables, add: `NIXPACKS_PYTHON_VERSION=3.11.9`
+2. Redeploy with "Clear build cache" - the included `nixpacks.toml` will handle pip bootstrap
+3. This matches the project's intended Python version and avoids distutils issues
+
+**Option 2: Force Dockerfile Builder**
+1. In Railway → Project Settings → Builder, select "Dockerfile" instead of "Nixpacks"
+2. This ensures Railway always uses the project's `Dockerfile` (python:3.11-slim)
+3. Redeploy - builds will be consistent and stable
+
+Both options restore "builds as before" behavior. Option 1 is easier (just add one environment variable), while Option 2 gives maximum control over the build environment.
+
 ---
 
 ## Troubleshooting
