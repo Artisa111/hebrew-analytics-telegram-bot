@@ -1,13 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation
+בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation - UPDATED
 """
+
+import sys
+import os
+
+# Add current directory to Python path
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Initialize logging before other imports
 from logging_config import setup_logging
 logger = setup_logging()
 
-import os
 import pandas as pd
 import numpy as np
 import tempfile
@@ -26,7 +31,19 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
-from pdf_report import generate_complete_data_report
+
+# Safe imports with fallbacks
+try:
+    from pdf_report import generate_complete_data_report
+except ImportError as e:
+    logger.warning(f"Could not import pdf_report: {e}")
+    generate_complete_data_report = None
+
+try:
+    from enhanced_pdf_report import generate_enhanced_data_report
+except ImportError as e:
+    logger.warning(f"Could not import enhanced_pdf_report: {e}")
+    generate_enhanced_data_report = None
 
 # Setup logging
 logger.info("Simple Hebrew Bot starting with advanced PDF generation")
@@ -253,6 +270,10 @@ class SimpleHebrewBot:
                 await update.message.reply_text("❌ אין נתונים לדוח! שלח קובץ תחילה.")
                 return
             
+            if generate_complete_data_report is None:
+                await update.message.reply_text("❌ מערכת PDF לא זמינה כרגע")
+                return
+            
             await update.message.reply_text("🖨️ יוצר דוח PDF רגיל בעברית…")
             
             try:
@@ -298,6 +319,11 @@ class SimpleHebrewBot:
                             filename=os.path.basename(pdf_path), 
                             caption='דוח PDF רגיל הוכן בהצלחה! 📄'
                         )
+                    # Clean up
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass
                 else:
                     await update.message.reply_text('❌ שגיאה ביצירת הדוח הרגיל')
                     
@@ -311,7 +337,16 @@ class SimpleHebrewBot:
                 await update.message.reply_text("❌ אין נתונים לדוח מתקדם! שלח קובץ תחילה.")
                 return
             
-            await update.message.reply_text("🚀 יוצר דוח PDF מתקדם בעברית עם ניתוח מקיף, גרפים מקצועיים ותוכן מובטח בכל סעיף…")
+            if generate_enhanced_data_report is None:
+                await update.message.reply_text("❌ מערכת PDF מתקדמת לא זמינה כרגע")
+                return
+            
+            await update.message.reply_text("🚀 יוצר דוח PDF משופר בעברית עם:\n"
+                                          "📊 גרפים מקצועיים ומתקדמים\n"
+                                          "🔢 תובנות מספריות מפורטות\n"
+                                          "💡 ניתוח עסקי מעמיק\n"
+                                          "📈 ויזואליזציות אינטראקטיביות\n"
+                                          "🎯 המלצות מותאמות אישית")
             
             try:
                 df = self.user_data[user_id]['data']
@@ -319,50 +354,57 @@ class SimpleHebrewBot:
                 
                 # יצירת שם קובץ מותאם
                 base_name = os.path.splitext(file_name)[0] if file_name else "נתונים"
-                out_path = os.path.join(os.getcwd(), f'דוח_מתקדם_{base_name}.pdf')
+                out_path = os.path.join(os.getcwd(), f'דוח_משופר_{base_name}.pdf')
                 
-                # שימוש בפונקציה החדשה והמשופרת עם תוכן מובטח
-                pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
+                # שימוש בפונקציה המשופרת החדשה
+                pdf_path = generate_enhanced_data_report(df, out_path, include_charts=True)
                 
                 if pdf_path and os.path.exists(pdf_path):
+                    file_size = os.path.getsize(pdf_path)
                     with open(pdf_path, 'rb') as f:
                         await context.bot.send_document(
                             chat_id=update.effective_chat.id, 
                             document=f, 
                             filename=os.path.basename(pdf_path), 
-                            caption='🎉 דוח PDF מתקדם עם תוכן מובטח הוכן בהצלחה!\n\n'
+                            caption='🎉 דוח PDF משופר עם גרפים מתקדמים ותובנות מפורטות הוכן בהצלחה!\n\n'
                                    '✨ הדוח כולל:\n'
-                                   '• ניתוח מעמיק של הנתונים עם תוכן מובטח\n'
-                                   '• גרפים מקצועיים וויזואליזציות איכותיות\n'
-                                   '• תובנות ומסקנות אוטומטיות מפורטות\n'
-                                   '• המלצות מותאמות אישית עם הסברים\n'
-                                   '• ניתוח ערכים חריגים וקורלציות\n'
-                                   '• סיכום סטטיסטי מקיף\n'
+                                   '📊 גרפים מקצועיים: מטריצת קורלציות, דשבורד התפלגויות, ניתוח קטגוריות\n'
+                                   '🔢 תובנות מספריות: סטטיסטיקות מתקדמות עם פרשנות בעברית\n'
+                                   '💡 ניתוח עסקי: תובנות מותאמות אישית והמלצות לפעולה\n'
+                                   '🎯 הערכת איכות: ציון איכות נתונים מקיף עם פירוט\n'
+                                   '📈 ויזואליזציות: תרשימים צבעוניים ומקצועיים\n'
+                                   '⚠️ ניתוח חריגים: זיהוי וניתוח ערכים חריגים מתקדם\n'
                                    '• עיצוב מקצועי בעברית מימין לשמאל\n'
-                                   '• תוכן מובטח בכל סעיף - אף סעיף לא יישאר ריק!'
+                                   f'📁 גודל קובץ: {file_size//1024}KB'
                         )
+                    
+                    # Clean up
+                    try:
+                        os.remove(pdf_path)
+                    except:
+                        pass
                     
                     # הודעת מעקב
                     await update.message.reply_text(
-                        "🎯 **דוח PDF מתקדם עם תוכן מובטח נוצר בהצלחה!**\n\n"
-                        "🔥 **חידושים בדוח החדש:**\n"
-                        "✅ תוכן מובטח בכל סעיף - אף סעיף לא נשאר ריק\n"
-                        "📊 ניתוח סטטיסטי מלא עם הסברים מפורטים\n"
-                        "📈 גרפים מקצועיים עם תיאורים בעברית\n"
-                        "🔍 זיהוי קורלציות וחריגים עם המלצות\n"
-                        "💡 תובנות עסקיות מותאמות אישית\n"
-                        "🎨 עיצוב מקצועי בעברית מימין לשמאל\n"
-                        "🛡️ עמידות מול נתונים בעייתיים\n\n"
-                        "🚀 זהו דוח מתקדם ומקצועי שמבטיח תוכן איכותי בכל מקרה!",
+                        "🎯 **דוח PDF משופר נוצר בהצלחה!**\n\n"
+                        "🔥 **מה חדש בדוח המשופר:**\n"
+                        "📊 **גרפים מתקדמים:** מטריצת קורלציות עם מסכה, דשבורד התפלגויות עם KDE\n"
+                        "🔢 **תובנות מספריות:** ניתוח סטטיסטי מעמיק עם הטיה, קורטוזיס ומקדמי שונות\n"
+                        "💡 **ניתוח עסקי:** קטגוריזציה של תובנות לפי נושאים (נתונים, איכות, ביצועים)\n"
+                        "🎯 **הערכת איכות:** ציון איכות מקיף עם פירוט רכיבים ועונשים\n"
+                        "📈 **ויזואליזציות:** צבעים מקצועיים, אייקונים ועיצוב משופר\n"
+                        "⚠️ **ניתוח חריגים:** Box plots מתקדמים עם סטטיסטיקות מפורטות\n"
+                        "🚀 **המלצות:** המלצות מקצועיות מחולקות לקטגוריות עם צעדים הבאים\n\n"
+                        "זהו דוח ברמה מקצועית עם כל הכלים הנדרשים לקבלת החלטות מבוססות נתונים!",
                         parse_mode=ParseMode.MARKDOWN
                     )
                     
                 else:
-                    await update.message.reply_text('❌ שגיאה ביצירת הדוח המתקדם')
+                    await update.message.reply_text('❌ שגיאה ביצירת הדוח המשופר')
                     
             except Exception as e:
-                logger.error(f"Error sending advanced PDF: {e}")
-                await update.message.reply_text('❌ שגיאה ביצירת הדוח המתקדם')
+                logger.error(f"Error sending enhanced PDF: {e}")
+                await update.message.reply_text('❌ שגיאה ביצירת הדוח המשופר')
         
         elif text == '📁 העלאת קובץ':
             await update.message.reply_text(
