@@ -143,12 +143,75 @@ HEBREW_TEXTS = {
     "suggest_ab_testing": "🔬 מומלץ לבצע בדיקות A/B להשוואה בין קבוצות שונות",
     "suggest_anomaly_detection": "🔬 מומלץ לבצע זיהוי אנומליות לאיתור תופעות חריגות",
     
+    # Enhanced insights for improved PDF
+    "executive_summary": "סיכום מנהלים",
+    "key_findings": "ממצאים עיקריים",
+    "data_overview": "סקירת נתונים מקיפה",
+    "numerical_analysis": "ניתוח מספרי מתקדם",
+    "categorical_analysis": "ניתוח קטגורי מתקדם",
+    "correlation_analysis": "ניתוח קורלציות מתקדם",
+    "outliers_analysis": "ניתוח ערכים חריגים מתקדם",
+    "quality_assessment": "הערכת איכות נתונים מקיפה",
+    "business_insights": "תובנות עסקיות מתקדמות",
+    "advanced_recommendations": "המלצות מתקדמות לפעולה",
+    "next_steps": "צעדים הבאים מומלצים",
+    
+    # Chart descriptions with enhanced details
+    "enhanced_correlation_chart": "מטריצת קורלציות מתקדמת עם פרשנות מקצועית - מציגה קשרים סטטיסטיים בין משתנים מספריים",
+    "distribution_dashboard": "דשבורד התפלגויות עם ניתוח סטטיסטי מעמיק - כולל היסטוגרמות, עקומות צפיפות וסטטיסטיקות מרכזיות",
+    "categorical_dashboard": "ניתוח קטגוריות מתקדם עם תובנות עסקיות - מציג התפלגות ערכים וריכוזים בנתונים קטגוריים",
+    "outliers_dashboard": "זיהוי וניתוח ערכים חריגים מקצועי - משתמש בשיטת IQR ו-Z-Score לזיהוי אנומליות",
+    "quality_dashboard": "הערכת איכות נתונים מקיפה - כולל ציון איכות, ניתוח שלמות וכפילויות",
+    "insights_summary_chart": "סיכום תובנות עסקיות ויזואלי - מציג את התובנות המרכזיות בפורמט גרפי",
+    
+    # Statistical terms in Hebrew
+    "variance": "שונות",
+    "standard_deviation": "סטיית תקן",
+    "coefficient_variation": "מקדם שונות",
+    "skewness": "הטיה",
+    "kurtosis": "קורטוזיס",
+    "entropy": "אנטרופיה",
+    "concentration_ratio": "יחס ריכוז",
+    "unique_ratio": "יחס ייחודיות",
+    "distribution_type": "סוג התפלגות",
+    "normal_distribution": "התפלגות נורמלית",
+    "skewed_right": "התפלגות מוטה ימינה",
+    "skewed_left": "התפלגות מוטה שמאלה",
+    "symmetric_distribution": "התפלגות סימטרית",
+    
+    # Quality levels
+    "quality_excellent": "מעולה",
+    "quality_good": "טובה",
+    "quality_fair": "בינונית",
+    "quality_poor": "נמוכה",
+    "quality_very_poor": "גרועה",
+    
+    # Correlation strength levels
+    "correlation_very_strong": "חזקה מאוד",
+    "correlation_strong": "חזקה",
+    "correlation_moderate": "בינונית",
+    "correlation_weak": "חלשה",
+    "correlation_very_weak": "חלשה מאוד",
+    "correlation_positive": "חיובית",
+    "correlation_negative": "שלילית",
+    
+    # Enhanced recommendations
+    "recommend_data_cleaning": "🔧 בצע ניקוי מקיף של הנתונים לפני המשך הניתוח",
+    "recommend_quality_control": "📋 הגדר תהליכי בקרת איכות אוטומטיים",
+    "recommend_advanced_analysis": "📈 המשך לניתוח מתקדם - הנתונים באיכות מעולה",
+    "recommend_feature_selection": "🎯 בצע בחירת תכונות (Feature Selection) לשיפור ביצועי המודלים",
+    "recommend_big_data": "🚀 שקול שימוש בטכניקות Big Data לעיבוד יעיל",
+    "recommend_more_data": "📏 שקול איסוף נתונים נוספים לשיפור יציבות הניתוח",
+    "recommend_monitoring": "📊 הקם דשבורד ניטור לעקיבה שוטפת אחר מדדי הביצוע",
+    "recommend_automation": "🔄 יישם תהליכי עדכון נתונים אוטומטיים",
+    "recommend_training": "👥 הכשר את הצוות לפרשנות נכונה של התוצאות",
+    
     # Data quality scores
     "data_quality_score": "ציון איכות נתונים: {score}/100",
     "data_quality_excellent": "🌟 איכות נתונים מעולה (90-100) - הנתונים מוכנים לכל סוג ניתוח",
     "data_quality_good": "✅ איכות נתונים טובה (70-89) - הנתונים מתאימים לרוב סוגי הניתוח",
     "data_quality_fair": "⚠️ איכות נתונים בינונית (50-69) - נדרש טיפול בבעיות איכות לפני ניתוח מתקדם",
-    "data_quality_poor": "❌ איכות נתונים נמוכה (מתחת ל-50) - נדרש טיפול מקיף לפני כל ניתוח"
+    "data_quality_poor": "❌ איכות נתונים נמוכה (מתחת ל-50) - נדרש טיפול מקיף לפני כל ניתוח",
     
     # Error messages
     "error_no_data": "❌ אין נתונים לעיבוד",
