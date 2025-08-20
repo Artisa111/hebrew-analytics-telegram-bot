@@ -147,6 +147,10 @@ class HebrewPDFReport:
     def setup_hebrew_support(self):
         """הגדרת תמיכה מלאה בעברית ל-PDF"""
         try:
+            # Set matplotlib backend first
+            import matplotlib
+            matplotlib.use('Agg')
+            
             # Resolve Hebrew fonts
             regular_font, bold_font = self.resolve_hebrew_fonts()
             
@@ -953,6 +957,292 @@ class HebrewPDFReport:
         except Exception as e:
             logger.error(f"Error adding chart to PDF: {e}")
     
+    def create_visualizations(self, df: pd.DataFrame, output_dir: str = "charts") -> List[str]:
+        """יצירת ויזואליזציות של הנתונים"""
+        try:
+            # Ensure matplotlib is properly configured
+            import matplotlib
+            matplotlib.use('Agg')
+            plt.ioff()  # Turn off interactive mode
+            
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            chart_files = []
+            
+            # Configure matplotlib for better Hebrew support
+            plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+            plt.rcParams['axes.unicode_minus'] = False
+            plt.rcParams['figure.facecolor'] = 'white'
+            plt.rcParams['axes.facecolor'] = 'white'
+            
+            # 1. Correlation heatmap for numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 1 and len(df) > 0:
+                plt.figure(figsize=(10, 8))
+                
+                # Safe correlation calculation
+                try:
+                    correlation_matrix = df[numeric_cols].corr()
+                    # Remove NaN correlations
+                    correlation_matrix = correlation_matrix.fillna(0)
+                except Exception as e:
+                    logger.warning(f"Correlation calculation failed: {e}")
+                    plt.close()
+                    return chart_files
+                
+                # Create heatmap with error handling
+                try:
+                    sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0,
+                               square=True, linewidths=0.5, cbar_kws={"shrink": .8},
+                               fmt='.2f', annot_kws={'size': 8})
+                    plt.title('Correlation Matrix', fontsize=14, pad=20)
+                except Exception as e:
+                    logger.warning(f"Heatmap creation failed: {e}")
+                    plt.close()
+                    return chart_files
+                
+                plt.tight_layout()
+                
+                chart_path = os.path.join(output_dir, 'correlation_heatmap.png')
+                plt.savefig(chart_path, dpi=150, bbox_inches='tight', facecolor='white')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 2. Missing values visualization
+            missing_sum = df.isnull().sum()
+            if missing_sum.sum() > 0:
+                plt.figure(figsize=(12, 6))
+                missing_data = missing_sum[missing_sum > 0].sort_values(ascending=False)
+                
+                # Limit to top 10 columns to prevent overcrowding
+                if len(missing_data) > 10:
+                    missing_data = missing_data.head(10)
+                
+                bars = plt.bar(range(len(missing_data)), missing_data.values, 
+                              color='lightcoral', alpha=0.7)
+                
+                # Add value labels on bars
+                for bar, value in zip(bars, missing_data.values):
+                    plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                            f'{value}', ha='center', va='bottom', fontweight='bold')
+                
+                plt.xticks(range(len(missing_data)), 
+                          [str(col)[:15] for col in missing_data.index], 
+                          rotation=45, ha='right')
+                plt.title('Missing Values by Column', fontsize=14, pad=20)
+                plt.ylabel('Number of Missing Values')
+                plt.grid(True, alpha=0.3, axis='y')
+                plt.tight_layout()
+                
+                chart_path = os.path.join(output_dir, 'missing_values.png')
+                plt.savefig(chart_path, dpi=150, bbox_inches='tight', facecolor='white')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 3. Distribution plots for numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0 and len(df) > 0:
+                # Limit to first 3 numeric columns to prevent memory issues
+                numeric_cols_limited = numeric_cols[:3]
+                n_cols = min(2, len(numeric_cols_limited))
+                n_rows = (len(numeric_cols) + n_cols - 1) // n_cols
+                
+                fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 4*n_rows))
+                if n_rows == 1:
+                    axes = [axes] if n_cols == 1 else axes
+                else:
+                    axes = axes.flatten()
+                
+                for i, col in enumerate(numeric_cols_limited):
+                    if i < len(axes):
+                        # Safe histogram creation
+                        try:
+                            clean_data = df[col].dropna()
+                            if len(clean_data) > 0:
+                                bins = min(20, len(clean_data.unique()))
+                                clean_data.hist(bins=bins, ax=axes[i], alpha=0.7, color='skyblue')
+                                axes[i].set_title(f'Distribution: {str(col)[:20]}', fontsize=10)
+                                axes[i].set_ylabel('Frequency')
+                                axes[i].grid(True, alpha=0.3)
+                        except Exception as e:
+                            logger.warning(f"Failed to create histogram for {col}: {e}")
+                            axes[i].text(0.5, 0.5, 'Data unavailable', 
+                                       transform=axes[i].transAxes, ha='center')
+                
+                # Hide empty subplots
+                for i in range(len(numeric_cols_limited), len(axes)):
+                    axes[i].set_visible(False)
+                
+                plt.tight_layout()
+                chart_path = os.path.join(output_dir, 'distributions.png')
+                plt.savefig(chart_path, dpi=150, bbox_inches='tight', facecolor='white')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 4. Top categories for categorical columns
+            categorical_cols = df.select_dtypes(include=['object']).columns
+            for col in categorical_cols[:2]:  # Limit to first 2 categorical columns
+                try:
+                    clean_series = df[col].dropna()
+                    if len(clean_series) == 0 or clean_series.nunique() > 20:
+                        continue
+                        
+                    plt.figure(figsize=(10, 6))
+                    
+                    top_values = clean_series.value_counts().head(8)
+                    colors = plt.cm.Set3(np.linspace(0, 1, len(top_values)))
+                    
+                    bars = plt.bar(range(len(top_values)), top_values.values, color=colors)
+                    
+                    # Add value labels
+                    for bar, value in zip(bars, top_values.values):
+                        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5,
+                                f'{value}', ha='center', va='bottom', fontweight='bold')
+                    
+                    plt.xticks(range(len(top_values)), 
+                              [str(val)[:15] for val in top_values.index], 
+                              rotation=45, ha='right')
+                    plt.title(f'Top Values: {str(col)[:20]}', fontsize=14, pad=20)
+                    plt.ylabel('Frequency')
+                    plt.grid(True, alpha=0.3, axis='y')
+                    plt.tight_layout()
+                    
+                    safe_col_name = str(col).replace('/', '_').replace('\\', '_')[:20]
+                    chart_path = os.path.join(output_dir, f'categories_{safe_col_name}.png')
+                    plt.savefig(chart_path, dpi=150, bbox_inches='tight', facecolor='white')
+                    plt.close()
+                    chart_files.append(chart_path)
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to create categorical chart for {col}: {e}")
+                    plt.close()
+            
+            return chart_files
+            
+        except Exception as e:
+            logger.error(f"Error creating visualizations: {e}")
+            return []
+    
+    def add_chart(self, chart_file_path: str):
+        """הוספת תרשים בודד לדוח"""
+        try:
+            if not os.path.exists(chart_file_path):
+                logger.warning(f"Chart file not found: {chart_file_path}")
+                return
+            
+            # Check if new page needed
+            if self.current_y > self.page_height - 120:
+                self.pdf.add_page()
+                self.current_y = self.margin + 10
+            
+            # Add the chart with safe dimensions
+            try:
+                chart_width = self.page_width - 2 * self.margin
+                chart_height = min(80, self.page_height - self.current_y - 20)
+                
+                self.pdf.image(chart_file_path, x=self.margin, y=self.current_y, 
+                              w=chart_width, h=chart_height)
+                
+                self.current_y += chart_height + 10
+                
+            except Exception as e:
+                logger.warning(f"Could not add chart image: {e}")
+                self.add_text("Chart not available", 11, indent=10)
+            
+        except Exception as e:
+            logger.error(f"Error adding chart: {e}")
+    
+    def add_charts_section(self, chart_files: List[str]):
+        """הוספת סעיף תרשימים"""
+        try:
+            self.add_section_header("תרשימים וויזואליזציות", 1)
+            
+            for chart_file in chart_files:
+                if os.path.exists(chart_file):
+                    chart_name = os.path.basename(chart_file).replace('.png', '').replace('_', ' ')
+                    self.add_text(f"תרשים: {chart_name}", 12, bold=True)
+                    self.add_chart(chart_file)
+                    
+        except Exception as e:
+            logger.error(f"Error adding charts section: {e}")
+    
+    def analyze_real_data(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """ניתוח נתונים אמיתיים"""
+        try:
+            analysis = {}
+            
+            # Basic info
+            analysis['basic_info'] = {
+                'shape': df.shape,
+                'dtypes': df.dtypes.to_dict(),
+                'null_counts': df.isnull().sum().to_dict(),
+                'memory_usage': df.memory_usage(deep=True).sum()
+            }
+            
+            # Numeric analysis
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                analysis['numeric_summary'] = df[numeric_cols].describe().to_dict()
+                
+                # Correlations
+                if len(numeric_cols) > 1:
+                    analysis['correlations'] = df[numeric_cols].corr().to_dict()
+            
+            # Categorical analysis
+            categorical_cols = df.select_dtypes(include=['object']).columns
+            if len(categorical_cols) > 0:
+                analysis['categorical_summary'] = {}
+                for col in categorical_cols:
+                    analysis['categorical_summary'][col] = {
+                        'unique_count': df[col].nunique(),
+                        'top_values': df[col].value_counts().head(5).to_dict()
+                    }
+            
+            # Generate insights
+            insights = []
+            
+            # Data quality insights
+            total_nulls = df.isnull().sum().sum()
+            if total_nulls > 0:
+                null_pct = (total_nulls / (len(df) * len(df.columns))) * 100
+                insights.append(f"הנתונים מכילים {null_pct:.1f}% ערכים חסרים")
+            
+            # Size insights
+            rows, cols = df.shape
+            insights.append(f"מערך הנתונים מכיל {rows:,} שורות ו-{cols} עמודות")
+            
+            if len(numeric_cols) > 0:
+                insights.append(f"נמצאו {len(numeric_cols)} עמודות מספריות לניתוח")
+            
+            if len(categorical_cols) > 0:
+                insights.append(f"נמצאו {len(categorical_cols)} עמודות קטגוריות")
+            
+            analysis['insights'] = insights
+            
+            return analysis
+            
+        except Exception as e:
+            logger.error(f"Error analyzing data: {e}")
+            return {'error': str(e)}
+    
+    def add_analysis_section(self, title: str, content: Dict[str, Any]):
+        """הוספת סעיף ניתוח"""
+        try:
+            self.add_section_header(title, 1)
+            
+            if isinstance(content, dict):
+                for key, value in content.items():
+                    self.add_text(f"{key}: {value}", 12, indent=10)
+            elif isinstance(content, list):
+                for item in content:
+                    self.add_text(f"• {item}", 12, indent=10)
+            else:
+                self.add_text(str(content), 12)
+                
+        except Exception as e:
+            logger.error(f"Error adding analysis section: {e}")
+    
     def generate_comprehensive_report(self, df: pd.DataFrame, 
                                     output_path: str = "comprehensive_report.pdf") -> str:
         """יצירת דוח מקיף עם תוכן מובטח"""
@@ -994,14 +1284,88 @@ class HebrewPDFReport:
         except Exception as e:
             logger.error(f"Error generating comprehensive report: {e}")
             return None
+    
+    def generate_report(self, df: pd.DataFrame, output_path: str = "data_report.pdf") -> str:
+        """יצירת דוח מקיף מנתונים אמיתיים"""
+        try:
+            # Analyze the data
+            analysis_results = self.analyze_real_data(df)
+            
+            if 'error' in analysis_results:
+                logger.error(f"Analysis failed: {analysis_results['error']}")
+                # Create minimal report even if analysis fails
+                analysis_results = {
+                    'basic_info': {
+                        'shape': df.shape,
+                        'dtypes': df.dtypes.to_dict(),
+                        'null_counts': df.isnull().sum().to_dict()
+                    },
+                    'insights': [f"Data contains {df.shape[0]} rows and {df.shape[1]} columns"]
+                }
+            
+            # Create title page
+            self.create_title_page(
+                title="Comprehensive Data Analysis Report",
+                subtitle="Complete Automated Analysis of Dataset"
+            )
+            
+            # Add table of contents
+            self.add_section_header("Table of Contents", 1)
+            toc_items = [
+                "1. Data Summary",
+                "2. Column Analysis", 
+                "3. Key Insights",
+                "4. Correlation Analysis",
+                "5. Outliers Analysis",
+                "6. Recommendations",
+                "7. Charts and Visualizations"
+            ]
+            
+            for item in toc_items:
+                self.add_text(item, 12, bold=True, indent=10)
+            
+            # Add analysis sections
+            if 'basic_info' in analysis_results:
+                self.add_analysis_section("סיכום נתונים בסיסי", analysis_results['basic_info'])
+            
+            if 'numeric_summary' in analysis_results:
+                self.add_analysis_section("ניתוח עמודות מספריות", analysis_results['numeric_summary'])
+            
+            if 'categorical_summary' in analysis_results:
+                self.add_analysis_section("ניתוח עמודות קטגוריות", analysis_results['categorical_summary'])
+            
+            if 'insights' in analysis_results:
+                self.add_analysis_section("תובנות עיקריות", analysis_results['insights'])
+            
+            # Create and add charts
+            chart_files = self.create_visualizations(df)
+            if chart_files:
+                self.add_charts_section(chart_files)
+            
+            # Clean up chart files after adding to PDF
+            for chart_file in chart_files:
+                try:
+                    if os.path.exists(chart_file):
+                        os.remove(chart_file)
+                except:
+                    pass
+            
+            # Save the report
+            self.pdf.output(output_path)
+            logger.info(f"Report generated successfully: {output_path}")
+            
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error generating report: {e}")
+            return None
 
 
 def generate_complete_data_report(df: pd.DataFrame, 
                                 output_path: str = "complete_data_report.pdf",
                                 include_charts: bool = True) -> str:
     """
-    פונקציה ראשית ליצירת דוח מקיף מנתונים עם תוכן מובטח
-    Main function to generate comprehensive report with guaranteed content
+    Main function to generate comprehensive report from real data
     
     Args:
         df: DataFrame with your data
@@ -1017,18 +1381,18 @@ def generate_complete_data_report(df: pd.DataFrame,
             logger.error("DataFrame is empty or None")
             return None
         
-        logger.info(f"Starting PDF generation for DataFrame with shape: {df.shape}")
+        # Preprocess data to handle messy inputs
+        try:
+            from preprocess import preprocess_df
+            df = preprocess_df(df.copy())
+        except Exception as e:
+            logger.warning(f"Preprocessing failed, using original data: {e}")
         
         # Create report generator
         report = HebrewPDFReport()
         
-        # Generate comprehensive report with guaranteed content
+        # Generate comprehensive report
         result_path = report.generate_comprehensive_report(df, output_path)
-        
-        if result_path:
-            logger.info(f"PDF report generated successfully: {result_path}")
-        else:
-            logger.error("PDF report generation failed")
         
         return result_path
         
@@ -1076,7 +1440,7 @@ def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0,
             output_pdf_path = f"דוח_ניתוח_{base_name}.pdf"
         
         # Generate report
-        return generate_complete_data_report(df, output_path, include_charts=True)
+        return generate_complete_data_report(df, output_pdf_path, include_charts=True)
         
     except Exception as e:
         logger.error(f"Error analyzing Excel file: {e}")
