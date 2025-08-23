@@ -11,6 +11,10 @@ from typing import Dict, List, Any, Optional, Union
 import logging
 import os
 from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 import matplotlib.pyplot as plt
 import seaborn as sns
 from PIL import Image
@@ -176,7 +180,11 @@ class HebrewPDFReport:
             
             # Date
             if date is None:
-                date = datetime.now().strftime("%d/%m/%Y %H:%M")
+                try:
+                    date_dt = datetime.now(ZoneInfo("Asia/Jerusalem")) if ZoneInfo else datetime.now()
+                except Exception:
+                    date_dt = datetime.now()
+                date = date_dt.strftime("%d/%m/%Y %H:%M")
             
             self.pdf.set_font('Hebrew', '', 12)
             date_text = f"תאריך הדוח: {date}"
@@ -773,6 +781,103 @@ class HebrewPDFReport:
                     plt.close()
                     chart_files.append(chart_path)
             
+            # 5. Scatter plots for top correlated pairs (with trend line)
+            if len(numeric_cols) > 1:
+                try:
+                    corr = df[numeric_cols].corr().abs()
+                    np.fill_diagonal(corr.values, 0)
+                    pairs = (
+                        corr.unstack()
+                            .sort_values(ascending=False)
+                            .drop_duplicates()
+                    )
+                    top_pairs = [(a, b) for (a, b) in pairs.index[:2]]
+                    for x_col, y_col in top_pairs:
+                        if x_col == y_col:
+                            continue
+                        plt.figure(figsize=(8, 6))
+                        sns.regplot(x=df[x_col], y=df[y_col], scatter_kws={'alpha': 0.5})
+                        plt.title(f'תרשים פיזור: {x_col} מול {y_col}', fontsize=14)
+                        plt.xlabel(x_col)
+                        plt.ylabel(y_col)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, f'scatter_{x_col}_vs_{y_col}.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 6. Box plot for numeric columns
+            if len(numeric_cols) > 0:
+                try:
+                    plt.figure(figsize=(12, 6))
+                    sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
+                    plt.title('תרשים קופסאות לעמודות מספריות', fontsize=16, pad=20)
+                    plt.tight_layout()
+                    chart_path = os.path.join(output_dir, 'box_plot.png')
+                    plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 7. Violin plot for up to 6 numeric columns
+            if len(numeric_cols) > 1:
+                try:
+                    selected = list(numeric_cols)[:6]
+                    data_to_plot = [df[c].dropna().values for c in selected]
+                    plt.figure(figsize=(12, 6))
+                    parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
+                    plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
+                    plt.title('תרשים כינור לעמודות נבחרות', fontsize=16, pad=20)
+                    plt.tight_layout()
+                    chart_path = os.path.join(output_dir, 'violin_plot.png')
+                    plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 8. Pie chart for first categorical column (top 5)
+            if len(categorical_cols) > 0:
+                try:
+                    col = categorical_cols[0]
+                    top_values = df[col].value_counts().head(5)
+                    if not top_values.empty:
+                        plt.figure(figsize=(8, 8))
+                        plt.pie(top_values.values, labels=top_values.index, autopct='%1.1f%%', startangle=140)
+                        plt.title(f'התפלגות קטגוריות (Top 5): {col}', fontsize=16, pad=20)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, f'pie_{col}.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 9. Area chart for time series if datetime column exists
+            try:
+                dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                if len(dt_cols) > 0:
+                    dt_col = dt_cols[0]
+                    ts = df[dt_col].dropna()
+                    if not ts.empty:
+                        counts = ts.dt.to_period('D').value_counts().sort_index()
+                        x = range(len(counts))
+                        plt.figure(figsize=(12, 5))
+                        plt.plot(x, counts.values, color='tab:blue')
+                        plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
+                        plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                        plt.title('תרשים שטח - ספירת רשומות לפי יום', fontsize=16, pad=20)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, 'area_timeseries.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+            except Exception:
+                pass
+            
             return chart_files
             
         except Exception as e:
@@ -791,7 +896,12 @@ class HebrewPDFReport:
                 'correlation_heatmap.png': 'מטריצת קורלציות - מציגה את הקשרים בין העמודות המספריות',
                 'missing_values.png': 'ערכים חסרים - מציג את כמות הערכים החסרים בכל עמודה',
                 'distributions.png': 'התפלגויות - מציג את התפלגות הערכים בעמודות המספריות',
-                'top_categories': 'קטגוריות נפוצות - מציג את הערכים השכיחים ביותר'
+                'top_categories': 'קטגוריות נפוצות - מציג את הערכים השכיחים ביותר',
+                'scatter_': 'תרשים פיזור עם קו מגמה',
+                'box_plot.png': 'תרשים קופסאות לעמודות מספריות',
+                'violin_plot.png': 'תרשים כינור לעמודות נבחרות',
+                'pie_': 'תרשים עוגה (Top 5 קטגוריות)',
+                'area_timeseries.png': 'תרשים שטח - סדרת זמן יומית'
             }
             
             for i, chart_file in enumerate(chart_files):
