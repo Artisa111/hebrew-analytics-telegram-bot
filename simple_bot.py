@@ -22,7 +22,109 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_complete_data_report
-from visualization_enhanced import get_enhanced_chart_generator
+
+# Embedded enhanced chart generator (no external module needed)
+def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
+    class EnhancedChartGenerator:
+        def create_comprehensive_dashboard(self, df, analysis_results=None, output_dir=None):
+            try:
+                out_dir = output_dir or os.path.join(os.getcwd(), 'temp_charts')
+                os.makedirs(out_dir, exist_ok=True)
+                chart_files = []
+
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                categorical_cols = df.select_dtypes(include=['object']).columns
+
+                # 1) Bar chart for first categorical
+                try:
+                    if len(categorical_cols) > 0:
+                        col = categorical_cols[0]
+                        top_vals = df[col].value_counts().head(10)
+                        if not top_vals.empty:
+                            plt.figure(figsize=(10, 6))
+                            plt.bar(range(len(top_vals)), top_vals.values)
+                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
+                            plt.title(f'ערכים נפוצים: {col}')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, 'bar_chart_top_categories.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 2) Histogram for first numeric
+                try:
+                    if len(numeric_cols) > 0:
+                        col = numeric_cols[0]
+                        plt.figure(figsize=(9, 6))
+                        plt.hist(df[col].dropna(), bins=30, alpha=0.8)
+                        plt.title(f'היסטוגרמה: {col}')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, f'histogram_{col}.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 3) Scatter for two numerics
+                try:
+                    if len(numeric_cols) > 1:
+                        x, y = numeric_cols[:2]
+                        plt.figure(figsize=(9, 6))
+                        sns.regplot(x=df[x], y=df[y], scatter_kws={'alpha': 0.5})
+                        plt.title(f'תרשים פיזור: {x} מול {y}')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, f'scatter_plot_{x}_vs_{y}.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 4) Correlation heatmap
+                try:
+                    if len(numeric_cols) > 1:
+                        corr = df[numeric_cols].corr()
+                        plt.figure(figsize=(10, 8))
+                        sns.heatmap(corr, annot=False, cmap='coolwarm', center=0)
+                        plt.title('מפת קורלציה')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'correlation_heatmap.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 5) Area chart for datetime column (counts by day)
+                try:
+                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                    if len(dt_cols) > 0:
+                        col = dt_cols[0]
+                        ts = df[col].dropna()
+                        if not ts.empty:
+                            counts = ts.dt.to_period('D').value_counts().sort_index()
+                            x = range(len(counts))
+                            plt.figure(figsize=(12, 5))
+                            plt.plot(x, counts.values, color='tab:blue')
+                            plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
+                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                            plt.title('תרשים שטח - ספירת רשומות לפי יום')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, 'area_chart_timeseries.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            chart_files.append(path)
+                except Exception:
+                    pass
+
+                return chart_files
+            except Exception:
+                return []
+
+    return EnhancedChartGenerator()
 
 # Setup logging: route INFO and below to stdout, WARNING+ to stderr
 class _MaxLevelFilter(logging.Filter):
