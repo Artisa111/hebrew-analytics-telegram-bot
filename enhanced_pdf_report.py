@@ -14,7 +14,7 @@ import tempfile
 import matplotlib.pyplot as plt
 import seaborn as sns
 from datetime import datetime
-import warnings
+from typing import Dict, List, Optional, Tuple, Any
 import requests
 from pathlib import Path
 
