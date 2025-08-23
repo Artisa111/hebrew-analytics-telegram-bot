@@ -68,6 +68,37 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                 except Exception:
                     pass
 
+                # 2b) Box plot for numeric columns (horizontal, consolidated)
+                try:
+                    if len(numeric_cols) > 0:
+                        plt.figure(figsize=(12, 6))
+                        sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
+                        plt.title('תרשים קופסאות לעמודות מספריות')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'box_plot.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 2c) Violin plot for up to 6 numeric columns
+                try:
+                    if len(numeric_cols) > 1:
+                        selected = list(numeric_cols)[:6]
+                        data_to_plot = [df[c].dropna().values for c in selected]
+                        plt.figure(figsize=(12, 6))
+                        parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
+                        plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
+                        plt.title('תרשים כינור לעמודות נבחרות')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'violin_plot.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
                 # 3) Scatter for two numerics
                 try:
                     if len(numeric_cols) > 1:
@@ -98,6 +129,38 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                 except Exception:
                     pass
 
+                # 4b) Pairplot for up to 4 numeric columns
+                try:
+                    if len(numeric_cols) > 1:
+                        subset = list(numeric_cols)[:4]
+                        g = sns.pairplot(df[subset].dropna())
+                        g.fig.suptitle('Pairplot - קשרים בין עמודות', y=1.02)
+                        path = os.path.join(out_dir, 'pairplot.png')
+                        g.fig.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close('all')
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 4c) Missing values per column
+                try:
+                    total_missing = df.isnull().sum().sum()
+                    if total_missing > 0:
+                        missing = df.isnull().sum()
+                        missing = missing[missing > 0].sort_values(ascending=False).head(20)
+                        plt.figure(figsize=(12, 6))
+                        plt.bar(range(len(missing)), missing.values)
+                        plt.xticks(range(len(missing)), missing.index, rotation=45, ha='right')
+                        plt.title('ערכים חסרים לפי עמודה')
+                        plt.ylabel('כמות ערכים חסרים')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'missing_values.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(path)
+                except Exception:
+                    pass
+
                 # 5) Area chart for datetime column (counts by day)
                 try:
                     dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
@@ -114,6 +177,45 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                             plt.title('תרשים שטח - ספירת רשומות לפי יום')
                             plt.tight_layout()
                             path = os.path.join(out_dir, 'area_chart_timeseries.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            chart_files.append(path)
+                except Exception:
+                    pass
+
+                # 5b) Line chart of numeric mean by day (if both datetime and numeric exist)
+                try:
+                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                    if len(dt_cols) > 0 and len(numeric_cols) > 0:
+                        dt_col = dt_cols[0]
+                        num_col = numeric_cols[0]
+                        tmp = df[[dt_col, num_col]].dropna()
+                        if not tmp.empty:
+                            daily = tmp.groupby(tmp[dt_col].dt.to_period('D'))[num_col].mean().sort_index()
+                            x = range(len(daily))
+                            plt.figure(figsize=(12, 5))
+                            plt.plot(x, daily.values, marker='o')
+                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in daily.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                            plt.title(f'ממוצע יומי: {num_col}')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, 'line_timeseries.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            chart_files.append(path)
+                except Exception:
+                    pass
+
+                # Extra) Top categories for up to 3 categorical columns
+                try:
+                    for col in list(categorical_cols)[:3]:
+                        top_vals = df[col].value_counts().head(10)
+                        if not top_vals.empty:
+                            plt.figure(figsize=(10, 6))
+                            plt.bar(range(len(top_vals)), top_vals.values)
+                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
+                            plt.title(f'קטגוריות מובילות: {col}')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, f'top_categories_{col}.png')
                             plt.savefig(path, dpi=220, bbox_inches='tight')
                             plt.close()
                             chart_files.append(path)
