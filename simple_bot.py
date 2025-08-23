@@ -1,997 +1,1126 @@
 # -*- coding: utf-8 -*-
 """
-בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation
+מודול יצירת דוחות PDF עם תמיכה מלאה בעברית מימין לשמאל
+PDF report generation module with full Hebrew RTL support
+PRODUCTION VERSION - NO DEMO DATA
 """
 
-import logging
-import sys
-import os
+from fpdf import FPDF
 import pandas as pd
-import numpy as np
-import tempfile
-import shutil
+from typing import Dict, List, Any, Optional, Union
+import logging
+import os
+from datetime import datetime
+try:
+    from zoneinfo import ZoneInfo
+except Exception:
+    ZoneInfo = None
 import matplotlib.pyplot as plt
 import seaborn as sns
+from PIL import Image
+import io
+import numpy as np
 from scipy import stats
-from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-from telegram.constants import ParseMode
-from sklearn.cluster import KMeans
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import accuracy_score, r2_score
-from pdf_report import generate_complete_data_report
+import arabic_reshaper
+from bidi.algorithm import get_display
+import warnings
 
-# Embedded enhanced chart generator (no external module needed)
-def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
-    class EnhancedChartGenerator:
-        def create_comprehensive_dashboard(self, df, analysis_results=None, output_dir=None):
+warnings.filterwarnings('ignore')
+
+# Configure matplotlib for Hebrew
+plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma']
+
+logger = logging.getLogger(__name__)
+
+class HebrewPDFReport:
+    def __init__(self):
+        self.pdf = FPDF()
+        self.setup_hebrew_support()
+        self.current_y = 0
+        self.page_width = 210
+        self.page_height = 297
+        self.margin = 20
+        self.rtl_support = True
+    
+    def _fix_hebrew_text(self, text: str) -> str:
+        """תיקון טקסט עברי לתצוגה נכונה מימין לשמאל"""
+        try:
+            if not text:
+                return ""
+            
+            # Handle mixed Hebrew-English text
+            if any('\u0590' <= char <= '\u05FF' for char in text):
+                # Reshape Arabic/Hebrew characters
+                reshaped_text = arabic_reshaper.reshape(text)
+                # Apply bidirectional algorithm
+                bidi_text = get_display(reshaped_text)
+                return bidi_text
+            return text
+        except Exception as e:
+            logger.warning(f"Error fixing Hebrew text: {e}")
+            return text
+    
+    def setup_hebrew_support(self):
+        """הגדרת תמיכה מלאה בעברית ל-PDF"""
+        try:
+            # Font paths for different operating systems
+            font_paths = {
+                'windows': [
+                    'C:/Windows/Fonts/arial.ttf',
+                    'C:/Windows/Fonts/arialbd.ttf',
+                    'C:/Windows/Fonts/calibri.ttf',
+                    'C:/Windows/Fonts/calibrib.ttf'
+                ],
+                'linux': [
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+                    '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+                    '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                    '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
+                ],
+                'mac': [
+                    '/System/Library/Fonts/Arial.ttf',
+                    '/System/Library/Fonts/Arial Bold.ttf',
+                    '/Library/Fonts/Arial.ttf'
+                ]
+            }
+            
+            regular_font = None
+            bold_font = None
+            
+            # Detect OS and try to load fonts
+            for os_type, paths in font_paths.items():
+                for path in paths:
+                    if os.path.exists(path):
+                        if 'bold' in path.lower() or 'bd' in path.lower():
+                            if bold_font is None:
+                                bold_font = path
+                        else:
+                            if regular_font is None:
+                                regular_font = path
+                        
+                        if regular_font and bold_font:
+                            break
+                if regular_font and bold_font:
+                    break
+            
+            # Add fonts to PDF
+            if regular_font:
+                self.pdf.add_font('Hebrew', '', regular_font, uni=True)
+                if bold_font:
+                    self.pdf.add_font('Hebrew', 'B', bold_font, uni=True)
+                else:
+                    self.pdf.add_font('Hebrew', 'B', regular_font, uni=True)
+                
+                self.pdf.set_font('Hebrew', '', 12)
+                logger.info("Hebrew fonts loaded successfully")
+            else:
+                # Fallback to core fonts
+                self.pdf.set_font('Arial', '', 12)
+                logger.warning("Using fallback font - Hebrew support may be limited")
+            
+            self.pdf.set_auto_page_break(auto=True, margin=15)
+            self.pdf.set_margins(self.margin, self.margin, self.margin)
+            
+        except Exception as e:
+            logger.error(f"Error setting up Hebrew support: {e}")
+            self.pdf.set_font('Arial', '', 12)
+    
+    def _get_text_width(self, text: str) -> float:
+        """חישוב רוחב טקסט"""
+        try:
+            return self.pdf.get_string_width(text)
+        except:
+            return len(text) * 2  # Rough estimation
+    
+    def _add_rtl_text(self, x: float, y: float, text: str, align: str = 'R'):
+        """הוספת טקסט מימין לשמאל"""
+        try:
+            fixed_text = self._fix_hebrew_text(text)
+            
+            if align == 'R':
+                # Right align - calculate x position from right margin
+                text_width = self._get_text_width(fixed_text)
+                x_pos = self.page_width - self.margin - text_width
+            elif align == 'C':
+                # Center align
+                text_width = self._get_text_width(fixed_text)
+                x_pos = (self.page_width - text_width) / 2
+            else:
+                # Left align
+                x_pos = x
+            
+            self.pdf.text(x_pos, y, fixed_text)
+            
+        except Exception as e:
+            logger.error(f"Error adding RTL text: {e}")
+            self.pdf.text(x, y, text)
+    
+    def create_title_page(self, title: str, subtitle: str = None, 
+                         company: str = "מערכת ניתוח נתונים", date: str = None):
+        """יצירת דף כותרת מעוצב"""
+        try:
+            self.pdf.add_page()
+            
+            # Add company logo area (placeholder)
+            self.pdf.set_fill_color(230, 230, 250)
+            self.pdf.rect(70, 30, 70, 25, 'F')
+            
+            # Main title
+            self.pdf.set_font('Hebrew', 'B', 24)
+            self._add_rtl_text(0, 80, title, 'C')
+            
+            # Subtitle
+            if subtitle:
+                self.pdf.set_font('Hebrew', '', 16)
+                self._add_rtl_text(0, 100, subtitle, 'C')
+            
+            # Company name
+            self.pdf.set_font('Hebrew', 'B', 14)
+            self._add_rtl_text(0, 120, company, 'C')
+            
+            # Date
+            if date is None:
+                try:
+                    date_dt = datetime.now(ZoneInfo("Asia/Jerusalem")) if ZoneInfo else datetime.now()
+                except Exception:
+                    date_dt = datetime.now()
+                date = date_dt.strftime("%d/%m/%Y %H:%M")
+            
+            self.pdf.set_font('Hebrew', '', 12)
+            date_text = f"תאריך הדוח: {date}"
+            self._add_rtl_text(0, 140, date_text, 'C')
+            
+            # Decorative lines
+            self.pdf.set_line_width(0.5)
+            self.pdf.line(30, 160, 180, 160)
+            self.pdf.line(30, 162, 180, 162)
+            
+            # Page info
+            self.pdf.set_font('Hebrew', '', 10)
+            page_info = "דוח נוצר באופן אוטומטי על ידי מערכת ניתוח הנתונים"
+            self._add_rtl_text(0, 260, page_info, 'C')
+            
+            self.current_y = 180
+            
+        except Exception as e:
+            logger.error(f"Error creating title page: {e}")
+    
+    def add_section_header(self, title: str, level: int = 1):
+        """הוספת כותרת סעיף עם עיצוב"""
+        try:
+            # Check if new page needed
+            if self.current_y > self.page_height - 50:
+                self.pdf.add_page()
+                self.current_y = self.margin + 10
+            
+            # Add spacing before header
+            if level == 1:
+                self.current_y += 15
+                self.pdf.set_font('Hebrew', 'B', 18)
+                # Add background color for main headers
+                self.pdf.set_fill_color(245, 245, 255)
+                self.pdf.rect(self.margin, self.current_y - 5, 
+                             self.page_width - 2 * self.margin, 12, 'F')
+            elif level == 2:
+                self.current_y += 12
+                self.pdf.set_font('Hebrew', 'B', 14)
+            else:
+                self.current_y += 8
+                self.pdf.set_font('Hebrew', 'B', 12)
+            
+            # Add header text
+            self._add_rtl_text(0, self.current_y, title, 'R')
+            
+            # Add underline for level 1 headers
+            if level == 1:
+                y_line = self.current_y + 2
+                self.pdf.line(self.margin, y_line, self.page_width - self.margin, y_line)
+            
+            self.current_y += 15
+            
+        except Exception as e:
+            logger.error(f"Error adding section header: {e}")
+    
+    def add_text(self, text: str, font_size: int = 12, bold: bool = False, 
+                 indent: int = 0):
+        """הוספת טקסט עם תמיכה מלאה ב-RTL"""
+        try:
+            # Normalize inputs to avoid NoneType issues
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                text = str(text)
             try:
-                out_dir = output_dir or os.path.join(os.getcwd(), 'temp_charts')
-                os.makedirs(out_dir, exist_ok=True)
-                chart_files = []
-
-                numeric_cols = df.select_dtypes(include=[np.number]).columns
-                categorical_cols = df.select_dtypes(include=['object']).columns
-
-                # 1) Bar chart for first categorical
-                try:
-                    if len(categorical_cols) > 0:
-                        col = categorical_cols[0]
-                        top_vals = df[col].value_counts().head(10)
-                        if not top_vals.empty:
-                            plt.figure(figsize=(10, 6))
-                            plt.bar(range(len(top_vals)), top_vals.values)
-                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
-                            plt.title(f'ערכים נפוצים: {col}')
-                            plt.tight_layout()
-                            path = os.path.join(out_dir, 'bar_chart_top_categories.png')
-                            plt.savefig(path, dpi=220, bbox_inches='tight')
-                            plt.close()
-                            chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 2) Histogram for first numeric
-                try:
-                    if len(numeric_cols) > 0:
-                        col = numeric_cols[0]
-                        plt.figure(figsize=(9, 6))
-                        plt.hist(df[col].dropna(), bins=30, alpha=0.8)
-                        plt.title(f'היסטוגרמה: {col}')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, f'histogram_{col}.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 2b) Box plot for numeric columns (horizontal, consolidated)
-                try:
-                    if len(numeric_cols) > 0:
-                        plt.figure(figsize=(12, 6))
-                        sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
-                        plt.title('תרשים קופסאות לעמודות מספריות')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, 'box_plot.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 2c) Violin plot for up to 6 numeric columns
-                try:
-                    if len(numeric_cols) > 1:
-                        selected = list(numeric_cols)[:6]
-                        data_to_plot = [df[c].dropna().values for c in selected]
-                        plt.figure(figsize=(12, 6))
-                        parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
-                        plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
-                        plt.title('תרשים כינור לעמודות נבחרות')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, 'violin_plot.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 3) Scatter for two numerics
-                try:
-                    if len(numeric_cols) > 1:
-                        x, y = numeric_cols[:2]
-                        plt.figure(figsize=(9, 6))
-                        sns.regplot(x=df[x], y=df[y], scatter_kws={'alpha': 0.5})
-                        plt.title(f'תרשים פיזור: {x} מול {y}')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, f'scatter_plot_{x}_vs_{y}.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 4) Correlation heatmap
-                try:
-                    if len(numeric_cols) > 1:
-                        corr = df[numeric_cols].corr()
-                        plt.figure(figsize=(10, 8))
-                        sns.heatmap(corr, annot=False, cmap='coolwarm', center=0)
-                        plt.title('מפת קורלציה')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, 'correlation_heatmap.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 4b) Pairplot for up to 4 numeric columns
-                try:
-                    if len(numeric_cols) > 1:
-                        subset = list(numeric_cols)[:4]
-                        g = sns.pairplot(df[subset].dropna())
-                        g.fig.suptitle('Pairplot - קשרים בין עמודות', y=1.02)
-                        path = os.path.join(out_dir, 'pairplot.png')
-                        g.fig.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close('all')
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 4c) Missing values per column
-                try:
-                    total_missing = df.isnull().sum().sum()
-                    if total_missing > 0:
-                        missing = df.isnull().sum()
-                        missing = missing[missing > 0].sort_values(ascending=False).head(20)
-                        plt.figure(figsize=(12, 6))
-                        plt.bar(range(len(missing)), missing.values)
-                        plt.xticks(range(len(missing)), missing.index, rotation=45, ha='right')
-                        plt.title('ערכים חסרים לפי עמודה')
-                        plt.ylabel('כמות ערכים חסרים')
-                        plt.tight_layout()
-                        path = os.path.join(out_dir, 'missing_values.png')
-                        plt.savefig(path, dpi=220, bbox_inches='tight')
-                        plt.close()
-                        chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 5) Area chart for datetime column (counts by day)
-                try:
-                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
-                    if len(dt_cols) > 0:
-                        col = dt_cols[0]
-                        ts = df[col].dropna()
-                        if not ts.empty:
-                            counts = ts.dt.to_period('D').value_counts().sort_index()
-                            x = range(len(counts))
-                            plt.figure(figsize=(12, 5))
-                            plt.plot(x, counts.values, color='tab:blue')
-                            plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
-                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
-                            plt.title('תרשים שטח - ספירת רשומות לפי יום')
-                            plt.tight_layout()
-                            path = os.path.join(out_dir, 'area_chart_timeseries.png')
-                            plt.savefig(path, dpi=220, bbox_inches='tight')
-                            plt.close()
-                            chart_files.append(path)
-                except Exception:
-                    pass
-
-                # 5b) Line chart of numeric mean by day (if both datetime and numeric exist)
-                try:
-                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
-                    if len(dt_cols) > 0 and len(numeric_cols) > 0:
-                        dt_col = dt_cols[0]
-                        num_col = numeric_cols[0]
-                        tmp = df[[dt_col, num_col]].dropna()
-                        if not tmp.empty:
-                            daily = tmp.groupby(tmp[dt_col].dt.to_period('D'))[num_col].mean().sort_index()
-                            x = range(len(daily))
-                            plt.figure(figsize=(12, 5))
-                            plt.plot(x, daily.values, marker='o')
-                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in daily.index[::max(1, len(x)//10)]], rotation=45, ha='right')
-                            plt.title(f'ממוצע יומי: {num_col}')
-                            plt.tight_layout()
-                            path = os.path.join(out_dir, 'line_timeseries.png')
-                            plt.savefig(path, dpi=220, bbox_inches='tight')
-                            plt.close()
-                            chart_files.append(path)
-                except Exception:
-                    pass
-
-                # Extra) Top categories for up to 3 categorical columns
-                try:
-                    for col in list(categorical_cols)[:3]:
-                        top_vals = df[col].value_counts().head(10)
-                        if not top_vals.empty:
-                            plt.figure(figsize=(10, 6))
-                            plt.bar(range(len(top_vals)), top_vals.values)
-                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
-                            plt.title(f'קטגוריות מובילות: {col}')
-                            plt.tight_layout()
-                            path = os.path.join(out_dir, f'top_categories_{col}.png')
-                            plt.savefig(path, dpi=220, bbox_inches='tight')
-                            plt.close()
-                            chart_files.append(path)
-                except Exception:
-                    pass
-
-                return chart_files
+                font_size = float(font_size) if font_size is not None else 12.0
             except Exception:
-                return []
-
-    return EnhancedChartGenerator()
-
-# Setup logging: route INFO and below to stdout, WARNING+ to stderr
-class _MaxLevelFilter(logging.Filter):
-    def __init__(self, max_level: int) -> None:
-        super().__init__()
-        self.max_level = max_level
-    def filter(self, record: logging.LogRecord) -> bool:
-        return record.levelno <= self.max_level
-
-def _configure_logging() -> logging.Logger:
-    logger = logging.getLogger()
-    if getattr(logger, "_configured_split_handlers", False):
-        return logging.getLogger(__name__)
-
-    logger.setLevel(logging.INFO)
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    # Handler for stdout: up to INFO
-    stdout_handler = logging.StreamHandler(stream=sys.stdout)
-    stdout_handler.setLevel(logging.DEBUG)
-    stdout_handler.addFilter(_MaxLevelFilter(logging.INFO))
-    stdout_handler.setFormatter(formatter)
-
-    # Handler for stderr: WARNING and above
-    stderr_handler = logging.StreamHandler(stream=sys.stderr)
-    stderr_handler.setLevel(logging.WARNING)
-    stderr_handler.setFormatter(formatter)
-
-    # Clear existing handlers to avoid duplicates
-    logger.handlers.clear()
-    logger.addHandler(stdout_handler)
-    logger.addHandler(stderr_handler)
-    setattr(logger, "_configured_split_handlers", True)
-    
-    return logging.getLogger(__name__)
-
-logger = _configure_logging()
-
-# Настройка matplotlib для поддержки иврита
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
-plt.rcParams['axes.unicode_minus'] = False
-
-class SimpleHebrewBot:
-    def __init__(self, bot_token: str):
-        self.application = Application.builder().token(bot_token).job_queue(None).persistence(None).build()
-        self.user_data = {}  # Простое хранилище данных пользователей
-        self.setup_handlers()
-    
-    def setup_handlers(self):
-        """הגדרת handlers פשוטים"""
-        self.application.add_handler(CommandHandler("start", self.start_command))
-        self.application.add_handler(CommandHandler("help", self.help_command))
-        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
-        # Добавляем обработчик файлов
-        self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
-    
-    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """פקודת start פשוטה"""
-        user = update.effective_user
-        user_id = user.id
-        
-        # Инициализируем данные пользователя
-        self.user_data[user_id] = {
-            'data': None,
-            'file_name': None,
-            'analysis_done': False
-        }
-        
-        welcome_text = f"ברוך הבא {user.first_name}! 🎉\n\nאני בוט ניתוח נתונים בעברית.\n\n📁 שלח לי קובץ CSV או Excel כדי להתחיל!"
-        
-        keyboard = [
-            ['📊 ניתוח נתונים'],
-            ['📈 תרשימים'],
-            ['💡 תובנות והמלצות'],
-            ['📄 דוח PDF', '📊 דוח PDF מתקדם'],  # שתי אפשרויות PDF
-            ['📁 העלאת קובץ'],
-            ['❓ עזרה']
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
-        await update.message.reply_text(welcome_text, reply_markup=reply_markup)
-    
-    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """פקודת help פשוטה"""
-        help_text = """
-📚 **עזרה - בוט ניתוח נתונים בעברית**
-
-**פקודות זמינות:**
-/start - התחלת שימוש בבוט
-/help - הצגת עזרה זו
-
-**יכולות הבוט:**
-• 📁 העלאת קבצי CSV ו-Excel
-• 📊 ניתוח נתונים מקיף
-• 📈 יצירת תרשימים מקצועיים
-• 💡 תובנות אוטומטיות והמלצות
-• 🔍 זיהוי דפוסים ואנומליות
-• 📄 דוחות PDF בעברית (רגיל ומתקדם)
-
-**איך להשתמש:**
-1. שלח לי קובץ CSV או Excel
-2. בחר "ניתוח נתונים" לניתוח מקיף
-3. בחר "תרשימים" ליצירת גרפים
-4. בחר "תובנות והמלצות" לקבלת תובנות
-5. בחר "דוח PDF מתקדם" לדוח מקצועי בעברית
-
-**דוח PDF מתקדם מכיל:**
-• ניתוח מעמיק של הנתונים
-• גרפים מקצועיים
-• תובנות ומסקנות
-• המלצות מותאמות אישית
-• עיצוב מקצועי בעברית מימין לשמאל
-
-**לשאלות נוספות, פנה למפתח הבוט.**
-        """
-        await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
-    
-    def has_data(self, user_id: int) -> bool:
-        """Проверяет, есть ли данные у пользователя"""
-        if user_id not in self.user_data:
-            return False
-        data = self.user_data[user_id].get('data')
-        return data is not None and isinstance(data, pd.DataFrame) and not data.empty
-    
-    async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בקבצים שהועלו"""
-        user_id = update.effective_user.id
-        document = update.message.document
-        
-        # Проверяем, есть ли пользователь в данных
-        if user_id not in self.user_data:
-            self.user_data[user_id] = {'data': None, 'file_name': None, 'analysis_done': False}
-        
-        # Проверяем тип файла
-        file_name = document.file_name
-        file_extension = os.path.splitext(file_name)[1].lower()
-        
-        supported_formats = ['.csv', '.xlsx', '.xls']
-        if file_extension not in supported_formats:
-            await update.message.reply_text(
-                f"❌ סוג קובץ לא נתמך: {file_extension}\n\nהקבצים הנתמכים: {', '.join(supported_formats)}"
-            )
-            return
-        
-        # Проверяем размер файла (максимум 50MB)
-        max_size = 50 * 1024 * 1024  # 50MB
-        if document.file_size > max_size:
-            await update.message.reply_text(
-                f"❌ הקובץ גדול מדי: {document.file_size // (1024*1024)}MB\n\nהגודל המקסימלי: 50MB"
-            )
-            return
-        
-        await update.message.reply_text("📁 קובץ התקבל! מעבד...")
-        
-        try:
-            # Скачиваем файл
-            file = await context.bot.get_file(document.file_id)
-            
-            # Создаем временную папку
-            temp_dir = tempfile.mkdtemp()
-            file_path = os.path.join(temp_dir, file_name)
-            
-            # Скачиваем файл
-            await file.download_to_drive(file_path)
-            
-            # Читаем файл
-            df = await self.read_data_file(file_path, file_extension)
-            
-            if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
-                # Сохраняем данные пользователя
-                self.user_data[user_id].update({
-                    'data': df,
-                    'file_name': file_name,
-                    'analysis_done': False
-                })
-                
-                # Показываем информацию о файле
-                rows, cols = df.shape
-                await update.message.reply_text(
-                    f"✅ הקובץ עובד בהצלחה!\n\n"
-                    f"📊 מידע על הקובץ:\n"
-                    f"• שם: {file_name}\n"
-                    f"• שורות: {rows:,}\n"
-                    f"• עמודות: {cols}\n"
-                    f"• גודל: {document.file_size // 1024}KB\n\n"
-                    f"עכשיו אתה יכול לבחור:\n"
-                    f"• 'ניתוח נתונים' - לניתוח מפורט\n"
-                    f"• 'תרשימים' - ליצירת גרפים\n"
-                    f"• 'תובנות והמלצות' - לקבלת תובנות\n"
-                    f"• 'דוח PDF מתקדם' - לדוח מקצועי בעברית! 🎯"
-                )
-                
-                # Показываем первые несколько строк (коротко)
-                preview = df.head(2).to_string(index=False, max_cols=3)
-                if len(preview) > 1000:
-                    preview = preview[:1000] + "..."
-                await update.message.reply_text(f"👀 תצוגה מקדימה:\n```\n{preview}\n```", parse_mode=ParseMode.MARKDOWN)
-                
-            else:
-                await update.message.reply_text("❌ שגיאה בקריאת הקובץ. אנא ודא שהקובץ תקין ולא ריק.")
-            
-        except Exception as e:
-            logger.error(f"Error handling document: {e}")
-            await update.message.reply_text("❌ שגיאה בעיבוד הקובץ. אנא נסה שוב.")
-        
-        finally:
-            # Очищаем временную папку
-            if 'temp_dir' in locals():
-                shutil.rmtree(temp_dir, ignore_errors=True)
-    
-    async def read_data_file(self, file_path: str, file_extension: str):
-        """קריאת קובץ נתונים"""
-        try:
-            if file_extension == '.csv':
-                # Пробуем разные кодировки
-                encodings = ['utf-8', 'latin-1', 'cp1255', 'iso-8859-8']
-                for encoding in encodings:
-                    try:
-                        df = pd.read_csv(file_path, encoding=encoding)
-                        if isinstance(df, pd.DataFrame) and not df.empty:
-                            return df
-                    except UnicodeDecodeError:
-                        continue
-                return None
-            
-            elif file_extension in ['.xlsx', '.xls']:
-                df = pd.read_excel(file_path)
-                if isinstance(df, pd.DataFrame) and not df.empty:
-                    return df
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error reading file {file_path}: {e}")
-            return None
-    
-    async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בהודעות טקסט פשוטות"""
-        user_id = update.effective_user.id
-        text = update.message.text
-        
-        # Проверяем, есть ли пользователь в данных
-        if user_id not in self.user_data:
-            self.user_data[user_id] = {'data': None, 'file_name': None, 'analysis_done': False}
-        
-        if text == '📊 ניתוח נתונים':
-            await self.handle_analyze_data(update, context)
-        
-        elif text == '📈 תרשימים':
-            await self.handle_charts(update, context)
-        
-        elif text == '💡 תובנות והמלצות':
-            await self.handle_insights(update, context)
-
-        elif text == '📄 דוח PDF':
-            # דוח PDF רגיל (ישן)
-            if not self.has_data(user_id):
-                await update.message.reply_text("❌ אין נתונים לדוח! שלח קובץ תחילה.")
-                return
-            
-            await update.message.reply_text("🖨️ יוצר דוח PDF רגיל בעברית…")
-            
+                font_size = 12.0
             try:
-                df = self.user_data[user_id]['data']
-                numeric_cols = df.select_dtypes(include=[np.number]).columns
-                analysis_results = {
-                    'basic_info': {
-                        'shape': df.shape,
-                        'memory_usage': df.memory_usage(deep=True).sum(),
-                        'null_counts': df.isnull().sum().to_dict(),
-                    }
+                indent = float(indent) if indent is not None else 0.0
+            except Exception:
+                indent = 0.0
+            
+            # Set font
+            if bold:
+                self.pdf.set_font('Hebrew', 'B', font_size)
+            else:
+                self.pdf.set_font('Hebrew', '', font_size)
+            
+            # Check if new page needed
+            if self.current_y > self.page_height - 30:
+                self.pdf.add_page()
+                self.current_y = self.margin + 10
+            
+            # Handle long text - wrap lines
+            max_width = self.page_width - 2 * self.margin - indent
+            lines = self._wrap_text_rtl(text, max_width)
+            
+            for line in lines:
+                if line.strip():  # Skip empty lines
+                    self._add_rtl_text(indent, self.current_y, line.strip(), 'R')
+                self.current_y += font_size * 0.4 + 2
+            
+            self.current_y += 3
+            
+        except Exception as e:
+            logger.error(f"Error adding text: {e}")
+    
+    def _wrap_text_rtl(self, text: str, max_width: float) -> List[str]:
+        """חלוקת טקסט ארוך לשורות עם תמיכה ב-RTL"""
+        try:
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                text = str(text)
+            words = text.split()
+            lines = []
+            current_line = ""
+            
+            for word in words:
+                test_line = f"{current_line} {word}" if current_line else word
+                if self._get_text_width(test_line) <= max_width:
+                    current_line = test_line
+                else:
+                    if current_line:
+                        lines.append(current_line)
+                    current_line = word
+            
+            if current_line:
+                lines.append(current_line)
+            
+            return lines
+            
+        except Exception as e:
+            logger.error(f"Error wrapping text: {e}")
+            return [text]
+    
+    def analyze_real_data(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """ניתוח מקיף של נתונים אמיתיים"""
+        try:
+            analysis_results = {}
+            
+            # Basic information
+            basic_info = {
+                'shape': df.shape,
+                'memory_usage': df.memory_usage(deep=True).sum(),
+                'dtypes': df.dtypes.to_dict(),
+                'null_counts': df.isnull().sum().to_dict(),
+                'duplicate_rows': df.duplicated().sum()
+            }
+            
+            # Column details
+            column_details = {}
+            for col in df.columns:
+                col_info = {
+                    'type': str(df[col].dtype),
+                    'unique_values': df[col].nunique(),
+                    'null_count': df[col].isnull().sum(),
+                    'null_percentage': round((df[col].isnull().sum() / len(df)) * 100, 2)
                 }
-                # quick top correlations for report
-                if len(numeric_cols) > 1:
-                    analysis_results['correlation_matrix'] = df[numeric_cols].corr()
                 
-                # reuse last charts if exist; otherwise, build minimal hist for first numeric
-                chart_dir = os.path.join(os.getcwd(), 'temp_charts')
-                chart_files = []
-                if os.path.isdir(chart_dir):
-                    for name in os.listdir(chart_dir):
-                        if name.lower().endswith('.png'):
-                            chart_files.append(os.path.join(chart_dir, name))
+                # Statistical analysis for numeric columns
+                if df[col].dtype in ['int64', 'float64', 'int32', 'float32']:
+                    col_info.update({
+                        'mean': round(df[col].mean(), 2),
+                        'median': round(df[col].median(), 2),
+                        'std': round(df[col].std(), 2),
+                        'min': round(df[col].min(), 2),
+                        'max': round(df[col].max(), 2),
+                        'q25': round(df[col].quantile(0.25), 2),
+                        'q75': round(df[col].quantile(0.75), 2)
+                    })
                 
-                if not chart_files and len(numeric_cols) > 0:
-                    import matplotlib.pyplot as plt
-                    path = os.path.join(chart_dir, 'pdf_quick_hist.png')
-                    os.makedirs(chart_dir, exist_ok=True)
-                    plt.hist(df[numeric_cols[0]].dropna(), bins=25)
-                    plt.title(str(numeric_cols[0]))
-                    plt.savefig(path, dpi=200)
-                    plt.close()
-                    chart_files.append(path)
-
-                out_path = os.path.join(os.getcwd(), 'analysis_report.pdf')
-                pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
+                # Analysis for categorical columns
+                elif df[col].dtype == 'object':
+                    col_info.update({
+                        'top_values': df[col].value_counts().head(5).to_dict(),
+                        'unique_ratio': round(df[col].nunique() / len(df), 3)
+                    })
                 
-                if pdf_path and os.path.exists(pdf_path):
-                    with open(pdf_path, 'rb') as f:
-                        await context.bot.send_document(
-                            chat_id=update.effective_chat.id, 
-                            document=f, 
-                            filename=os.path.basename(pdf_path), 
-                            caption='דוח PDF רגיל הוכן בהצלחה! 📄'
-                        )
-                else:
-                    await update.message.reply_text('❌ שגיאה ביצירת הדוח הרגיל')
-                    
-            except Exception as e:
-                logger.error(f"Error sending regular PDF: {e}")
-                await update.message.reply_text('❌ שגיאה ביצירת הדוח הרגיל')
-
-        elif text == '📊 דוח PDF מתקדם':
-            # דוח PDF מתקדם (חדש ומשופר)
-            if not self.has_data(user_id):
-                await update.message.reply_text("❌ אין נתונים לדוח מתקדם! שלח קובץ תחילה.")
-                return
+                column_details[col] = col_info
             
-            await update.message.reply_text("🚀 יוצר דוח PDF מתקדם בעברית עם ניתוח מקיף וגרפים מקצועיים…")
+            basic_info['column_details'] = column_details
+            analysis_results['basic_info'] = basic_info
             
-            try:
-                df = self.user_data[user_id]['data']
-                file_name = self.user_data[user_id]['file_name']
-                
-                # יצירת שם קובץ מותאם
-                base_name = os.path.splitext(file_name)[0] if file_name else "נתונים"
-                out_path = os.path.join(os.getcwd(), f'דוח_מתקדם_{base_name}.pdf')
-                
-                # שימוש בפונקציה החדשה והמשופרת
-                pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
-                
-                if pdf_path and os.path.exists(pdf_path):
-                    with open(pdf_path, 'rb') as f:
-                        await context.bot.send_document(
-                            chat_id=update.effective_chat.id, 
-                            document=f, 
-                            filename=os.path.basename(pdf_path), 
-                            caption='🎉 דוח PDF מתקדם הוכן בהצלחה!\n\n'
-                                   '✨ הדוח כולל:\n'
-                                   '• ניתוח מעמיק של הנתונים\n'
-                                   '• גרפים מקצועיים וויזואליזציות\n'
-                                   '• תובנות ומסקנות אוטומטיות\n'
-                                   '• המלצות מותאמות אישית\n'
-                                   '• עיצוב מקצועי בעברית מימין לשמאל'
-                        )
-                    
-                    # הודעת מעקב
-                    await update.message.reply_text(
-                        "🎯 **דוח PDF מתקדם נוצר בהצלחה!**\n\n"
-                        "הדוח החדש כולל:\n"
-                        "📊 ניתוח סטטיסטי מלא\n"
-                        "📈 גרפים מקצועיים\n"
-                        "🔍 זיהוי קורלציות וחריגים\n"
-                        "💡 תובנות עסקיות\n"
-                        "🎨 עיצוב מקצועי בעברית\n\n"
-                        "זהו דוח מתקדם בהרבה מהדוח הרגיל! 🚀",
-                        parse_mode=ParseMode.MARKDOWN
-                    )
-                    
-                else:
-                    await update.message.reply_text('❌ שגיאה ביצירת הדוח המתקדם')
-                    
-            except Exception as e:
-                logger.error(f"Error sending advanced PDF: {e}")
-                await update.message.reply_text('❌ שגיאה ביצירת הדוח המתקדם')
-        
-        elif text == '📁 העלאת קובץ':
-            await update.message.reply_text(
-                "📁 **העלאת קבצים**\n\n"
-                "שלח לי קובץ CSV או Excel כדי להתחיל!\n\n"
-                "**קבצים נתמכים:**\n"
-                "• CSV (.csv)\n"
-                "• Excel (.xlsx, .xls)\n\n"
-                "**מגבלות:**\n"
-                "• גודל מקסימלי: 50MB\n"
-                "• מספר שורות: ללא הגבלה\n"
-                "• מספר עמודות: ללא הגבלה\n\n"
-                "**טיפים:**\n"
-                "• וודא שהקובץ מכיל כותרות עמודות\n"
-                "• בדוק שאין שורות ריקות בתחילת הקובץ\n"
-                "• השתמש בקידוד UTF-8 לתמיכה בעברית",
-                parse_mode=ParseMode.MARKDOWN
-            )
-        
-        elif text == '❓ עזרה':
-            await self.help_command(update, context)
-        
-        else:
-            await update.message.reply_text(
-                "לא הבנתי את ההודעה שלך. 🤔\n\n"
-                "אנא השתמש בכפתורים שלמטה או שלח /help לעזרה מפורטת.\n\n"
-                "💡 אם יש לך קובץ נתונים - פשוט שלח אותו לי!"
-            )
-    
-    async def handle_analyze_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בניתוח נתונים"""
-        user_id = update.effective_user.id
-        
-        if not self.has_data(user_id):
-            await update.message.reply_text(
-                "❌ אין נתונים לניתוח!\n\n"
-                "אנא שלח לי קובץ CSV או Excel תחילה."
-            )
-            return
-        
-        await update.message.reply_text("🔍 מנתח נתונים...")
-        
-        try:
-            df = self.user_data[user_id]['data']
-            
-            # Базовый анализ
-            analysis_text = f"🔍 **ניתוח מפורט: {self.user_data[user_id]['file_name']}**\n\n"
-            
-            # Основная информация
-            rows, cols = df.shape
-            analysis_text += f"📊 **מידע בסיסי:**\n"
-            analysis_text += f"• מספר שורות: {rows:,}\n"
-            analysis_text += f"• מספר עמודות: {cols}\n"
-            analysis_text += f"• שם קובץ: {self.user_data[user_id]['file_name']}\n\n"
-            
-            # Информация о колонках
-            analysis_text += f"**עמודות וטיפוסי נתונים:**\n"
-            for i, col in enumerate(df.columns, 1):
-                col_type = str(df[col].dtype)
-                null_count = df[col].isnull().sum()
-                unique_count = df[col].nunique()
-                analysis_text += f"{i}. {col} ({col_type})"
-                if null_count > 0:
-                    null_percentage = (null_count / len(df)) * 100
-                    analysis_text += f" - {null_count} ערכים חסרים ({null_percentage:.1f}%)"
-                analysis_text += f" - {unique_count} ערכים ייחודיים\n"
-            
-            # Детальная статистика для числовых колонок
+            # Correlation analysis
             numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                analysis_text += f"\n📊 **סטטיסטיקה מספרית מפורטת:**\n"
-                for col in numeric_cols:
-                    stats = df[col].describe()
-                    Q1 = df[col].quantile(0.25)
-                    Q3 = df[col].quantile(0.75)
-                    analysis_text += f"\n**{col}:**\n"
-                    analysis_text += f"• ממוצע: {stats['mean']:.2f}\n"
-                    analysis_text += f"• חציון: {stats['50%']:.2f}\n"
-                    analysis_text += f"• סטיית תקן: {stats['std']:.2f}\n"
-                    analysis_text += f"• מינימום: {stats['min']:.2f}\n"
-                    analysis_text += f"• מקסימום: {stats['max']:.2f}\n"
-                    analysis_text += f"• Q1: {Q1:.2f}\n"
-                    analysis_text += f"• Q3: {Q3:.2f}\n"
+            if len(numeric_cols) > 1:
+                corr_matrix = df[numeric_cols].corr()
+                analysis_results['correlation_matrix'] = corr_matrix
+                
+                # Find strong correlations
+                strong_correlations = []
+                for i in range(len(corr_matrix.columns)):
+                    for j in range(i+1, len(corr_matrix.columns)):
+                        corr_val = corr_matrix.iloc[i, j]
+                        if abs(corr_val) > 0.5:  # Strong correlation threshold
+                            strong_correlations.append({
+                                'column1': corr_matrix.columns[i],
+                                'column2': corr_matrix.columns[j],
+                                'correlation': round(corr_val, 3)
+                            })
+                
+                analysis_results['strong_correlations'] = strong_correlations
             
-            # Анализ категориальных колонок
-            categorical_cols = df.select_dtypes(include=['object']).columns
-            if len(categorical_cols) > 0:
-                analysis_text += f"\n**ניתוח קטגוריות:**\n"
-                for col in categorical_cols[:3]:  # Только первые 3
-                    value_counts = df[col].value_counts()
-                    most_common = value_counts.head(3)
-                    analysis_text += f"• {col}:\n"
-                    for val, count in most_common.items():
-                        percentage = (count / len(df)) * 100
-                        analysis_text += f"  - {val}: {count} ({percentage:.1f}%)\n"
+            # Generate insights
+            insights = self._generate_insights(df, analysis_results)
+            analysis_results['insights'] = insights
             
-            # Проверка на дубликаты
-            duplicates = df.duplicated().sum()
-            if duplicates > 0:
-                analysis_text += f"\n**⚠️ אזהרות:**\n"
-                analysis_text += f"• נמצאו {duplicates} שורות כפולות\n"
+            # Outlier detection
+            outliers = self._detect_outliers(df)
+            analysis_results['outliers'] = outliers
             
-            # Анализ качества данных
-            total_cells = len(df) * len(df.columns)
-            total_nulls = df.isnull().sum().sum()
-            if total_nulls > 0:
-                null_percentage = (total_nulls / total_cells) * 100
-                analysis_text += f"\n**🔍 איכות נתונים:**\n"
-                analysis_text += f"• ערכים חסרים: {total_nulls:,} ({null_percentage:.1f}% מהנתונים)\n"
-                if null_percentage > 20:
-                    analysis_text += f"  - ⚠️ אחוז גבוה של ערכים חסרים - שקול לבדוק את מקור הנתונים\n"
-                elif null_percentage > 10:
-                    analysis_text += f"  - ⚠️ אחוז בינוני של ערכים חסרים - ייתכן שיידרש טיפול\n"
-                else:
-                    analysis_text += f"  - ✅ אחוז נמוך של ערכים חסרים - נתונים באיכות טובה\n"
-            
-            self.user_data[user_id]['analysis_done'] = True
-            
-            # Разбиваем длинное сообщение
-            if len(analysis_text) > 4000:
-                parts = [analysis_text[i:i+4000] for i in range(0, len(analysis_text), 4000)]
-                for i, part in enumerate(parts):
-                    if i == 0:
-                        await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
-                    else:
-                        await update.message.reply_text(f"📊 המשך הניתוח (חלק {i+1}):\n\n{part}", parse_mode=ParseMode.MARKDOWN)
-            else:
-                await update.message.reply_text(analysis_text, parse_mode=ParseMode.MARKDOWN)
-            
-            await update.message.reply_text(
-                "✅ הניתוח הושלם!\n\n"
-                "**מה עכשיו?**\n"
-                "📈 'תרשימים' - ליצירת גרפים מקצועיים\n"
-                "💡 'תובנות והמלצות' - לקבלת תובנות מתקדמות\n"
-                "📊 'דוח PDF מתקדם' - לדוח מקצועי מלא! 🎯",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            return analysis_results
             
         except Exception as e:
             logger.error(f"Error analyzing data: {e}")
-            await update.message.reply_text("❌ שגיאה בניתוח הנתונים")
+            return {'error': str(e)}
     
-    async def handle_charts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בתרשימים - יצירת תרשימים מקצועיים ומתקדמים עם מחולל משופר"""
-        user_id = update.effective_user.id
-        
-        if not self.has_data(user_id):
-            await update.message.reply_text(
-                "❌ אין נתונים לתרשימים!\n\n"
-                "אנא שלח לי קובץ CSV או Excel תחילה."
-            )
-            return
-        
-        await update.message.reply_text("📈 יוצר תרשימים מקצועיים עם מחולל משופר...")
+    def _generate_insights(self, df: pd.DataFrame, analysis: Dict) -> List[str]:
+        """יצירת תובנות אוטומטיות מהנתונים"""
+        insights = []
         
         try:
-            df = self.user_data[user_id]['data']
+            # Data size insights
+            rows, cols = df.shape
+            insights.append(f"הנתונים מכילים {rows:,} שורות ו-{cols} עמודות")
             
-            # שימוש במחולל התרשימים המשופר
-            enhanced_generator = get_enhanced_chart_generator()
-            
-            # יצירת ניתוח בסיסי לתרשימים
-            analysis_results = {}
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 1:
-                analysis_results['correlation_matrix'] = df[numeric_cols].corr()
-            
-            # יצירת דשבורד מקיף עם כל סוגי התרשימים המשופרים
-            chart_files = enhanced_generator.create_comprehensive_dashboard(df, analysis_results)
-            
-            # שליחת התרשימים למשתמש
-            if chart_files:
-                await update.message.reply_text(f"✅ נוצרו {len(chart_files)} תרשימים מקצועיים עם המחולל המשופר!")
-                
-                # סוגי התרשימים החדשים
-                enhanced_chart_types = {
-                    'bar_chart': '📊 תרשים עמודות משופר',
-                    'histogram': '📊 היסטוגרמה עם סטטיסטיקות',
-                    'scatter_plot': '🔵 תרשים פיזור עם מגמה',
-                    'box_plot': '📦 תרשים קופסה עם נתונים',
-                    'pie_chart': '🥧 תרשים עוגה עם מקרא',
-                    'violin_plot': '🎻 תרשים כינור',
-                    'correlation_heatmap': '🔥 מפת קורלציה',
-                    'area_chart': '🏔️ תרשים שטח',
-                    'radar_chart': '📡 תרשים רדאר',
-                    'treemap': '🌳 מפת עץ'
-                }
-                
-                for i, chart_file in enumerate(chart_files):
-                    try:
-                        with open(chart_file, 'rb') as img_file:
-                            # זיהוי סוג התרשים
-                            chart_type = "תרשים מקצועי משופר"
-                            for key, value in enhanced_chart_types.items():
-                                if key in os.path.basename(chart_file):
-                                    chart_type = value
-                                    break
-                            
-                            caption = f"📊 {chart_type}\n\n✨ נוצר עם מחולל התרשימים המשופר\n🎨 כולל תוויות בעברית ועיצוב מקצועי"
-                            
-                            await context.bot.send_photo(
-                                chat_id=update.effective_chat.id,
-                                photo=img_file,
-                                caption=caption
-                            )
-                    except Exception as e:
-                        logger.error(f"Error sending enhanced chart {chart_file}: {e}")
-                        await update.message.reply_text(f"❌ שגיאה בשליחת תרשים {i+1}")
-                
-                await update.message.reply_text(
-                    "🎉 **כל התרשימים המשופרים נשלחו!**\n\n"
-                    "💡 **התרשימים החדשים כוללים:**\n"
-                    "• 📊 תרשימי עמודות עם תוויות בעברית\n"
-                    "• 📈 היסטוגרמות עם עקומות צפיפות\n"
-                    "• 🔵 תרשימי פיזור עם קווי מגמה\n"
-                    "• 📦 תרשימי קופסה עם סטטיסטיקות\n"
-                    "• 🥧 תרשימי עוגה עם מקרא מפורט\n"
-                    "• 🎻 תרשימי כינור מתקדמים\n"
-                    "• 🔥 מפות קורלציה משופרות\n"
-                    "• 🏔️ תרשימי שטח מוערמים\n\n"
-                    "**מה עכשיו?**\n"
-                    "💡 'תובנות והמלצות' - לקבלת תובנות עסקיות\n"
-                    "📊 'דוח PDF מתקדם' - לדוח מקצועי עם כל הגרפים! 🎯"
-                )
-            else:
-                await update.message.reply_text("❌ לא ניתן ליצור תרשימים מהנתונים הנוכחיים.")
-            
-        except Exception as e:
-            logger.error(f"Error creating enhanced charts: {e}")
-            await update.message.reply_text("❌ שגיאה ביצירת התרשימים המשופרים")
-    
-    async def handle_insights(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בתובנות והמלצות"""
-        user_id = update.effective_user.id
-        
-        if not self.has_data(user_id):
-            await update.message.reply_text(
-                "❌ אין נתונים לתובנות!\n\n"
-                "אנא שלח לי קובץ תחילה."
-            )
-            return
-        
-        await update.message.reply_text("💡 מנתח תובנות ומכין המלצות...")
-        
-        try:
-            df = self.user_data[user_id]['data']
-            insights_text = "💡 **תובנות מתקדמות והמלצות:**\n\n"
-            
-            # 1. Анализ корреляций
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 1:
-                insights_text += "**🔗 ניתוח קורלציות:**\n"
-                correlation_matrix = df[numeric_cols].corr()
-                
-                # Находим топ-5 корреляций
-                correlations = []
-                for i in range(len(numeric_cols)):
-                    for j in range(i+1, len(numeric_cols)):
-                        col1, col2 = numeric_cols[i], numeric_cols[j]
-                        corr_value = correlation_matrix.loc[col1, col2]
-                        if not pd.isna(corr_value):
-                            correlations.append((col1, col2, abs(corr_value)))
-                
-                # Сортируем по силе корреляции
-                correlations.sort(key=lambda x: x[2], reverse=True)
-                
-                for i, (col1, col2, corr_abs) in enumerate(correlations[:5]):
-                    corr_value = correlation_matrix.loc[col1, col2]
-                    insights_text += f"• {col1} ↔ {col2}: {corr_value:.3f}\n"
-                
-                insights_text += "\n"
-            
-            # 2. Анализ выбросов
-            if len(numeric_cols) > 0:
-                insights_text += "**🔍 זיהוי אנומליות:**\n"
-                for col in numeric_cols[:3]:
-                    Q1 = df[col].quantile(0.25)
-                    Q3 = df[col].quantile(0.75)
-                    IQR = Q3 - Q1
-                    lower_bound = Q1 - 1.5 * IQR
-                    upper_bound = Q3 + 1.5 * IQR
-                    outliers = df[(df[col] < lower_bound) | (df[col] > upper_bound)]
-                    
-                    if len(outliers) > 0:
-                        outlier_percentage = (len(outliers) / len(df)) * 100
-                        insights_text += f"• ב-{col}: נמצאו {len(outliers)} ערכים חריגים ({outlier_percentage:.1f}%)\n"
-                        insights_text += f"  - טווח תקין: {lower_bound:.2f} עד {upper_bound:.2f}\n"
-                        if outlier_percentage > 10:
-                            insights_text += f"  - ⚠️ אחוז גבוה של אנומליות - ייתכן שיידרש טיפול\n"
-                    else:
-                        insights_text += f"• ב-{col}: אין ערכים חריגים\n"
-                
-                insights_text += "\n"
-            
-            # 3. Рекомендации по улучшению данных
-            insights_text += "**💡 המלצות לשיפור הנתונים:**\n"
-            
-            # Проверка на пропущенные значения
+            # Missing data insights
             total_nulls = df.isnull().sum().sum()
-            total_cells = len(df) * len(df.columns)
             if total_nulls > 0:
-                null_percentage = (total_nulls / total_cells) * 100
-                insights_text += f"• ערכים חסרים: {total_nulls:,} ({null_percentage:.1f}% מהנתונים)\n"
-                if null_percentage > 20:
-                    insights_text += f"  - ⚠️ אחוז גבוה - בדוק את מקור הנתונים\n"
-                elif null_percentage > 10:
-                    insights_text += f"  - ⚠️ אחוז בינוני - שקול השלמה באמצעות ממוצע או חציון\n"
-                else:
-                    insights_text += f"  - ✅ אחוז נמוך - נתונים באיכות טובה\n"
+                null_pct = (total_nulls / (rows * cols)) * 100
+                insights.append(f"אחוז הערכים החסרים: {null_pct:.1f}%")
+            else:
+                insights.append("הנתונים שלמים - אין ערכים חסרים")
             
-            # Проверка на дубликаты
+            # Data types insights
+            numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
+            categorical_cols = len(df.select_dtypes(include=['object']).columns)
+            datetime_cols = len(df.select_dtypes(include=['datetime64']).columns)
+            
+            insights.append(f"עמודות מספריות: {numeric_cols}, קטגוריאליות: {categorical_cols}, תאריכים: {datetime_cols}")
+            
+            # Duplicates insight
             duplicates = df.duplicated().sum()
             if duplicates > 0:
-                duplicate_percentage = (duplicates / len(df)) * 100
-                insights_text += f"• שורות כפולות: {duplicates:,} ({duplicate_percentage:.1f}%)\n"
-                insights_text += f"  - המלצה: הסר כפילויות לפני הניתוח\n"
+                insights.append(f"נמצאו {duplicates} שורות כפולות")
             
-            insights_text += "\n"
+            # Correlation insights
+            if 'strong_correlations' in analysis and analysis['strong_correlations']:
+                strong_corr_count = len(analysis['strong_correlations'])
+                insights.append(f"נמצאו {strong_corr_count} קורלציות חזקות בין עמודות")
             
-            # 4. Бизнес-инсайты
-            insights_text += "**🚀 תובנות עסקיות:**\n"
+            # Outliers insights
+            if 'outliers' in analysis:
+                outlier_cols = len([col for col, outliers in analysis['outliers'].items() if outliers > 0])
+                if outlier_cols > 0:
+                    insights.append(f"זוהו ערכים חריגים ב-{outlier_cols} עמודות")
             
-            if len(numeric_cols) > 0:
-                # Находим колонку с максимальной вариативностью
-                max_var_col = numeric_cols[0]
-                max_variance = df[max_var_col].var()
-                for col in numeric_cols:
-                    if df[col].var() > max_variance:
-                        max_variance = df[col].var()
-                        max_var_col = col
-                
-                insights_text += f"• העמודה {max_var_col} מראה את השונות הגבוהה ביותר\n"
-                insights_text += f"  - זה עשוי להצביע על הזדמנויות או סיכונים עסקיים\n"
-            
-            # 5. Рекомендации по дальнейшему анализу
-            insights_text += "\n**🎯 המלצות לניתוח נוסף:**\n"
-            if len(numeric_cols) > 1:
-                insights_text += "• ניתוח רגרסיה לזיהוי גורמים משפיעים\n"
-                insights_text += "• ניתוח אשכולות (Clustering) לזיהוי דפוסים\n"
-            if len(df.select_dtypes(include=['object']).columns) > 0:
-                insights_text += "• ניתוח ANOVA להשוואה בין קבוצות\n"
-                insights_text += "• ניתוח Chi-Square לבדיקת קשרים\n"
-            
-            # Разбиваем длинное сообщение
-            if len(insights_text) > 4000:
-                parts = [insights_text[i:i+4000] for i in range(0, len(insights_text), 4000)]
-                for i, part in enumerate(parts):
-                    if i == 0:
-                        await update.message.reply_text(part, parse_mode=ParseMode.MARKDOWN)
-                    else:
-                        await update.message.reply_text(f"💡 המשך התובנות (חלק {i+1}):\n\n{part}", parse_mode=ParseMode.MARKDOWN)
-            else:
-                await update.message.reply_text(insights_text, parse_mode=ParseMode.MARKDOWN)
-            
-            await update.message.reply_text(
-                "🎯 **התובנות וההמלצות הושלמו!**\n\n"
-                "עכשיו יש לך תמונה מלאה של הנתונים שלך.\n\n"
-                "**מה עכשיו?**\n"
-                "📊 'דוח PDF מתקדם' - לקבלת דוח מקצועי עם כל הניתוחים והתובנות! 🚀\n\n"
-                "הדוח המתקדם יכלול את כל הניתוחים, התרשימים והתובנות במסמך אחד מקצועי בעברית!",
-                parse_mode=ParseMode.MARKDOWN
-            )
+            # Data distribution insights
+            for col in df.select_dtypes(include=[np.number]).columns:
+                skewness = df[col].skew()
+                if abs(skewness) > 1:
+                    direction = "ימינה" if skewness > 0 else "שמאלה"
+                    insights.append(f"עמודה '{col}' מוטה {direction} (skewness: {skewness:.2f})")
             
         except Exception as e:
             logger.error(f"Error generating insights: {e}")
-            await update.message.reply_text("❌ שגיאה ביצירת התובנות")
-    
-    def run(self):
-        """הפעלת הבוט"""
-        logger.info("Starting Simple Hebrew Bot...")
-        self.application.run_polling()
-
-def main():
-    """הפונקציה הראשית"""
-    BOT_TOKEN = "8418603857:AAGoqw3LGd5yRggjNUiNc-4_DcWHNq2Ucdo"
-    
-    try:
-        print("Starting Simple Hebrew Bot with Advanced PDF Generation...")
-        bot = SimpleHebrewBot(BOT_TOKEN)
-        print("Bot created successfully!")
-        print("Features available:")
-        print("• Basic data analysis")
-        print("• Professional charts generation")
-        print("• Advanced insights and recommendations")
-        print("• Regular PDF reports (old version)")
-        print("• ADVANCED PDF reports with Hebrew RTL support (NEW!)")
-        print("• Hebrew text display from right to left")
-        print("• Professional charts in PDF")
-        print("• Comprehensive data analysis")
-        print("")
-        print("Starting bot...")
-        print("Now find the bot in Telegram and send /start")
-        print("Upload CSV/Excel files and try the new 'דוח PDF מתקדם' button!")
+            insights.append("שגיאה ביצירת תובנות")
         
-        bot.run()
+        return insights
+    
+    def _detect_outliers(self, df: pd.DataFrame) -> Dict[str, int]:
+        """זיהוי ערכים חריגים"""
+        outliers = {}
+        
+        try:
+            for col in df.select_dtypes(include=[np.number]).columns:
+                Q1 = df[col].quantile(0.25)
+                Q3 = df[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                outlier_count = len(df[(df[col] < lower_bound) | (df[col] > upper_bound)])
+                outliers[col] = outlier_count
+                
+        except Exception as e:
+            logger.error(f"Error detecting outliers: {e}")
+        
+        return outliers
+    
+    def add_data_summary(self, basic_info: Dict[str, Any]):
+        """הוספת סיכום נתונים מפורט"""
+        try:
+            self.add_section_header("סיכום נתונים", 1)
+            
+            # Data dimensions
+            if 'shape' in basic_info:
+                rows, cols = basic_info['shape']
+                self.add_text(f"מימדי הנתונים: {rows:,} שורות × {cols} עמודות", 12, bold=True)
+            
+            # Memory usage
+            if 'memory_usage' in basic_info:
+                memory_mb = basic_info['memory_usage'] / (1024 * 1024)
+                self.add_text(f"שימוש בזיכרון: {memory_mb:.2f} מגה-בייט", 12)
+            
+            # Data types summary
+            if 'dtypes' in basic_info:
+                dtype_counts = {}
+                for dtype in basic_info['dtypes'].values():
+                    dtype_str = str(dtype)
+                    dtype_counts[dtype_str] = dtype_counts.get(dtype_str, 0) + 1
+                
+                self.add_text("סוגי נתונים:", 12, bold=True)
+                for dtype, count in dtype_counts.items():
+                    self.add_text(f"  {dtype}: {count} עמודות", 11, indent=10)
+            
+            # Missing values
+            if 'null_counts' in basic_info:
+                total_nulls = sum(basic_info['null_counts'].values())
+                if total_nulls > 0:
+                    self.add_text(f"סך ערכים חסרים: {total_nulls:,}", 12, bold=True)
+                    # Show columns with missing values
+                    for col, null_count in basic_info['null_counts'].items():
+                        if null_count > 0:
+                            pct = (null_count / basic_info['shape'][0]) * 100
+                            self.add_text(f"  {col}: {null_count:,} ({pct:.1f}%)", 11, indent=10)
+                else:
+                    self.add_text("✓ אין ערכים חסרים בנתונים", 12, bold=True)
+            
+            # Duplicates
+            if 'duplicate_rows' in basic_info:
+                dup_count = basic_info['duplicate_rows']
+                if dup_count > 0:
+                    dup_pct = (dup_count / basic_info['shape'][0]) * 100
+                    self.add_text(f"שורות כפולות: {dup_count} ({dup_pct:.1f}%)", 12, bold=True)
+                else:
+                    self.add_text("✓ אין שורות כפולות", 12, bold=True)
+            
+        except Exception as e:
+            logger.error(f"Error adding data summary: {e}")
+    
+    def add_column_analysis(self, column_details: Dict[str, Any]):
+        """ניתוח מפורט של עמודות"""
+        try:
+            self.add_section_header("ניתוח עמודות", 1)
+            
+            for col_name, col_info in column_details.items():
+                self.add_section_header(f"עמודה: {col_name}", 2)
+                
+                # Basic info
+                self.add_text(f"סוג נתונים: {col_info['type']}", 11, indent=5)
+                self.add_text(f"ערכים ייחודיים: {col_info['unique_values']:,}", 11, indent=5)
+                
+                # Null values
+                if col_info['null_count'] > 0:
+                    self.add_text(f"ערכים חסרים: {col_info['null_count']:,} ({col_info['null_percentage']}%)", 
+                                11, indent=5)
+                
+                # Numeric column statistics
+                if 'mean' in col_info:
+                    self.add_text("סטטיסטיקות:", 11, bold=True, indent=5)
+                    self.add_text(f"ממוצע: {col_info['mean']}", 10, indent=15)
+                    self.add_text(f"חציון: {col_info['median']}", 10, indent=15)
+                    self.add_text(f"סטיית תקן: {col_info['std']}", 10, indent=15)
+                    self.add_text(f"מינימום: {col_info['min']}", 10, indent=15)
+                    self.add_text(f"מקסימום: {col_info['max']}", 10, indent=15)
+                    self.add_text(f"רבעון ראשון: {col_info['q25']}", 10, indent=15)
+                    self.add_text(f"רבעון שלישי: {col_info['q75']}", 10, indent=15)
+                
+                # Categorical column analysis
+                elif 'top_values' in col_info:
+                    self.add_text("ערכים נפוצים:", 11, bold=True, indent=5)
+                    for value, count in col_info['top_values'].items():
+                        self.add_text(f"{value}: {count}", 10, indent=15)
+                    
+                    if col_info['unique_ratio'] < 0.05:
+                        self.add_text("עמודה קטגורית עם ערכים מעטים", 10, indent=5)
+                    elif col_info['unique_ratio'] > 0.95:
+                        self.add_text("עמודה עם ערכים ייחודיים רבים (כמעט מזהה)", 10, indent=5)
+        
+        except Exception as e:
+            logger.error(f"Error adding column analysis: {e}")
+    
+    def add_insights_section(self, insights: List[str]):
+        """הוספת סעיף תובנות"""
+        try:
+            self.add_section_header("תובנות עיקריות", 1)
+            
+            for i, insight in enumerate(insights, 1):
+                bullet = "•" if i <= 10 else f"{i}."
+                self.add_text(f"{bullet} {insight}", 12, indent=5)
+        
+        except Exception as e:
+            logger.error(f"Error adding insights: {e}")
+    
+    def add_correlation_section(self, strong_correlations: List[Dict]):
+        """הוספת ניתוח קורלציות"""
+        try:
+            self.add_section_header("ניתוח קורלציות", 1)
+            
+            if strong_correlations:
+                self.add_text("קורלציות חזקות שנמצאו:", 12, bold=True)
+                
+                for corr in strong_correlations:
+                    strength = "חזקה מאוד" if abs(corr['correlation']) > 0.8 else "חזקה"
+                    direction = "חיובית" if corr['correlation'] > 0 else "שלילית"
+                    
+                    corr_text = f"• {corr['column1']} ↔ {corr['column2']}"
+                    self.add_text(corr_text, 11, indent=5)
+                    self.add_text(f"  עוצמה: {strength} {direction} ({corr['correlation']:.3f})", 10, indent=15)
+            else:
+                self.add_text("לא נמצאו קורלציות חזקות (מעל 0.5) בין העמודות המספריות", 12)
+        
+        except Exception as e:
+            logger.error(f"Error adding correlation section: {e}")
+    
+    def add_outliers_section(self, outliers: Dict[str, int]):
+        """הוספת ניתוח ערכים חריגים"""
+        try:
+            self.add_section_header("ניתוח ערכים חריגים", 1)
+            
+            outlier_cols = [col for col, count in outliers.items() if count > 0]
+            
+            if outlier_cols:
+                self.add_text("עמודות עם ערכים חריגים:", 12, bold=True)
+                
+                for col in outlier_cols:
+                    count = outliers[col]
+                    self.add_text(f"• {col}: {count} ערכים חריגים", 11, indent=5)
+                
+                self.add_text("\nהמלצה: בדוק את הערכים החריגים לפני המשך הניתוח", 11, bold=True)
+            else:
+                self.add_text("✓ לא זוהו ערכים חריגים באמצעות שיטת IQR", 12, bold=True)
+        
+        except Exception as e:
+            logger.error(f"Error adding outliers section: {e}")
+    
+    def add_recommendations_section(self, analysis_results: Dict[str, Any], df: pd.DataFrame):
+        """הוספת המלצות מותאמות אישית"""
+        try:
+            self.add_section_header("המלצות לשיפור", 1)
+            
+            recommendations = []
+            
+            # Data quality recommendations
+            basic_info = analysis_results.get('basic_info', {})
+            
+            # Missing values recommendations
+            if 'null_counts' in basic_info:
+                total_nulls = sum(basic_info['null_counts'].values())
+                total_cells = basic_info['shape'][0] * basic_info['shape'][1]
+                null_percentage = (total_nulls / total_cells) * 100
+                
+                if null_percentage > 30:
+                    recommendations.append("אחוז גבוה מאוד של ערכים חסרים - שקול לבדוק את איכות מקור הנתונים")
+                elif null_percentage > 10:
+                    recommendations.append("קיימים ערכים חסרים משמעותיים - מומלץ להחליט על אסטרטגיית טיפול (מחיקה/מילוי)")
+                elif null_percentage > 0:
+                    recommendations.append("ערכים חסרים מעטים - ניתן לטפל בהם באמצעות מילוי או מחיקה")
+            
+            # Duplicates recommendations
+            if 'duplicate_rows' in basic_info and basic_info['duplicate_rows'] > 0:
+                dup_pct = (basic_info['duplicate_rows'] / basic_info['shape'][0]) * 100
+                if dup_pct > 5:
+                    recommendations.append("אחוז גבוה של שורות כפולות - מומלץ לנקות לפני המשך הניתוח")
+                else:
+                    recommendations.append("נמצאו שורות כפולות מעטות - בדוק אם הן רלוונטיות לניתוח")
+            
+            # Correlation recommendations
+            if 'strong_correlations' in analysis_results:
+                strong_corrs = analysis_results['strong_correlations']
+                very_high_corrs = [c for c in strong_corrs if abs(c['correlation']) > 0.9]
+                
+                if very_high_corrs:
+                    recommendations.append("נמצאו קורלציות גבוהות מאוד - שקול להסיר עמודות מיותרות למניעת רב-קווטיות")
+                elif strong_corrs:
+                    recommendations.append("נמצאו קורלציות חזקות - בדוק אם יש קשרים סיבתיים או זיהוי תופעות מעניינות")
+            
+            # Outliers recommendations
+            if 'outliers' in analysis_results:
+                outlier_cols = [col for col, count in analysis_results['outliers'].items() if count > 0]
+                
+                if outlier_cols:
+                    high_outlier_cols = [col for col in outlier_cols 
+                                       if analysis_results['outliers'][col] > len(df) * 0.05]
+                    
+                    if high_outlier_cols:
+                        recommendations.append(f"עמודות עם ערכים חריגים רבים: {', '.join(high_outlier_cols)} - בדוק אם זה שגיאות נתונים או תופעות אמיתיות")
+                    else:
+                        recommendations.append("ערכים חריגים מעטים - בדוק ידנית ושקול האם להשאיר או להסיר")
+            
+            # Data size recommendations
+            rows, cols = basic_info.get('shape', (0, 0))
+            
+            if rows < 100:
+                recommendations.append("מערך נתונים קטן - תוצאות הניתוח עלולות להיות לא יציבות")
+            elif rows > 1000000:
+                recommendations.append("מערך נתונים גדול מאוד - שקול לבצע דגימה לטטסטים מהירים")
+            
+            if cols > 50:
+                recommendations.append("מספר עמודות רב - שקול לבצע בחירת תכונות (feature selection) לפני מודלים")
+            
+            # Memory recommendations
+            if 'memory_usage' in basic_info:
+                memory_mb = basic_info['memory_usage'] / (1024 * 1024)
+                if memory_mb > 1000:
+                    recommendations.append("שימוש גבוה בזיכרון - שקול לבצע אופטימיזציה של סוגי נתונים")
+            
+            # General best practices
+            general_recommendations = [
+                "בדוק תמיד את איכות הנתונים לפני ביצוע ניתוח מתקדם",
+                "שמור גרסת גיבוי של הנתונים המקוריים לפני ביצוע שינויים",
+                "תעד את כל השינויים שביצעת בנתונים לשחזור עתידי",
+                "בדוק הנחות הניתוח שלך מול התוצאות שקיבלת",
+                "השתמש בויזואליזציות להבנה טובה יותר של הנתונים"
+            ]
+            
+            recommendations.extend(general_recommendations)
+            
+            # Add recommendations to report
+            for i, rec in enumerate(recommendations, 1):
+                if i <= len(recommendations) - len(general_recommendations):
+                    # Specific recommendations
+                    self.add_text(f"🎯 {rec}", 11, bold=True, indent=5)
+                else:
+                    # General recommendations
+                    self.add_text(f"💡 {rec}", 11, indent=5)
+            
+        except Exception as e:
+            logger.error(f"Error adding recommendations: {e}")
+    
+    def create_visualizations(self, df: pd.DataFrame, output_dir: str = "charts") -> List[str]:
+        """יצירת ויזואליזציות של הנתונים"""
+        try:
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+            
+            chart_files = []
+            
+            # Set Hebrew font for matplotlib
+            plt.rcParams['font.family'] = ['DejaVu Sans']
+            
+            # 1. Correlation heatmap for numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 1:
+                plt.figure(figsize=(10, 8))
+                correlation_matrix = df[numeric_cols].corr()
+                
+                sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0,
+                           square=True, linewidths=0.5, cbar_kws={"shrink": .8})
+                plt.title('מטריצת קורלציות', fontsize=16, pad=20)
+                plt.tight_layout()
+                
+                chart_path = os.path.join(output_dir, 'correlation_heatmap.png')
+                plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 2. Missing values visualization
+            if df.isnull().sum().sum() > 0:
+                plt.figure(figsize=(12, 6))
+                missing_data = df.isnull().sum()
+                missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
+                
+                plt.bar(range(len(missing_data)), missing_data.values)
+                plt.xticks(range(len(missing_data)), missing_data.index, rotation=45, ha='right')
+                plt.title('ערכים חסרים לפי עמודה', fontsize=16, pad=20)
+                plt.ylabel('מספר ערכים חסרים')
+                plt.tight_layout()
+                
+                chart_path = os.path.join(output_dir, 'missing_values.png')
+                plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 3. Distribution plots for numeric columns
+            numeric_cols = df.select_dtypes(include=[np.number]).columns
+            if len(numeric_cols) > 0:
+                n_cols = min(3, len(numeric_cols))
+                n_rows = (len(numeric_cols) + n_cols - 1) // n_cols
+                
+                fig, axes = plt.subplots(n_rows, n_cols, figsize=(15, 5*n_rows))
+                if n_rows == 1:
+                    axes = [axes] if n_cols == 1 else axes
+                else:
+                    axes = axes.flatten()
+                
+                for i, col in enumerate(numeric_cols):
+                    if i < len(axes):
+                        df[col].hist(bins=30, ax=axes[i], alpha=0.7)
+                        axes[i].set_title(f'התפלגות: {col}')
+                        axes[i].set_ylabel('תכיפות')
+                
+                # Hide empty subplots
+                for i in range(len(numeric_cols), len(axes)):
+                    axes[i].set_visible(False)
+                
+                plt.tight_layout()
+                chart_path = os.path.join(output_dir, 'distributions.png')
+                plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                chart_files.append(chart_path)
+            
+            # 4. Top categories for categorical columns
+            categorical_cols = df.select_dtypes(include=['object']).columns
+            for col in categorical_cols[:3]:  # Limit to first 3 categorical columns
+                if df[col].nunique() <= 20:  # Only for columns with reasonable number of categories
+                    plt.figure(figsize=(10, 6))
+                    
+                    top_values = df[col].value_counts().head(10)
+                    plt.bar(range(len(top_values)), top_values.values)
+                    plt.xticks(range(len(top_values)), top_values.index, rotation=45, ha='right')
+                    plt.title(f'ערכים נפוצים: {col}', fontsize=16, pad=20)
+                    plt.ylabel('תכיפות')
+                    plt.tight_layout()
+                    
+                    chart_path = os.path.join(output_dir, f'top_categories_{col}.png')
+                    plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    chart_files.append(chart_path)
+            
+            # 5. Scatter plots for top correlated pairs (with trend line)
+            if len(numeric_cols) > 1:
+                try:
+                    corr = df[numeric_cols].corr().abs()
+                    np.fill_diagonal(corr.values, 0)
+                    pairs = (
+                        corr.unstack()
+                            .sort_values(ascending=False)
+                            .drop_duplicates()
+                    )
+                    top_pairs = [(a, b) for (a, b) in pairs.index[:2]]
+                    for x_col, y_col in top_pairs:
+                        if x_col == y_col:
+                            continue
+                        plt.figure(figsize=(8, 6))
+                        sns.regplot(x=df[x_col], y=df[y_col], scatter_kws={'alpha': 0.5})
+                        plt.title(f'תרשים פיזור: {x_col} מול {y_col}', fontsize=14)
+                        plt.xlabel(x_col)
+                        plt.ylabel(y_col)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, f'scatter_{x_col}_vs_{y_col}.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 6. Box plot for numeric columns
+            if len(numeric_cols) > 0:
+                try:
+                    plt.figure(figsize=(12, 6))
+                    sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
+                    plt.title('תרשים קופסאות לעמודות מספריות', fontsize=16, pad=20)
+                    plt.tight_layout()
+                    chart_path = os.path.join(output_dir, 'box_plot.png')
+                    plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 7. Violin plot for up to 6 numeric columns
+            if len(numeric_cols) > 1:
+                try:
+                    selected = list(numeric_cols)[:6]
+                    data_to_plot = [df[c].dropna().values for c in selected]
+                    plt.figure(figsize=(12, 6))
+                    parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
+                    plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
+                    plt.title('תרשים כינור לעמודות נבחרות', fontsize=16, pad=20)
+                    plt.tight_layout()
+                    chart_path = os.path.join(output_dir, 'violin_plot.png')
+                    plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                    plt.close()
+                    chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 8. Pie chart for first categorical column (top 5)
+            if len(categorical_cols) > 0:
+                try:
+                    col = categorical_cols[0]
+                    top_values = df[col].value_counts().head(5)
+                    if not top_values.empty:
+                        plt.figure(figsize=(8, 8))
+                        plt.pie(top_values.values, labels=top_values.index, autopct='%1.1f%%', startangle=140)
+                        plt.title(f'התפלגות קטגוריות (Top 5): {col}', fontsize=16, pad=20)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, f'pie_{col}.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+                except Exception:
+                    pass
+            
+            # 9. Area chart for time series if datetime column exists
+            try:
+                dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                if len(dt_cols) > 0:
+                    dt_col = dt_cols[0]
+                    ts = df[dt_col].dropna()
+                    if not ts.empty:
+                        counts = ts.dt.to_period('D').value_counts().sort_index()
+                        x = range(len(counts))
+                        plt.figure(figsize=(12, 5))
+                        plt.plot(x, counts.values, color='tab:blue')
+                        plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
+                        plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                        plt.title('תרשים שטח - ספירת רשומות לפי יום', fontsize=16, pad=20)
+                        plt.tight_layout()
+                        chart_path = os.path.join(output_dir, 'area_timeseries.png')
+                        plt.savefig(chart_path, dpi=300, bbox_inches='tight')
+                        plt.close()
+                        chart_files.append(chart_path)
+            except Exception:
+                pass
+            
+            return chart_files
+            
+        except Exception as e:
+            logger.error(f"Error creating visualizations: {e}")
+            return []
+    
+    def add_charts_section(self, chart_files: List[str]):
+        """הוספת תרשימים לדוח"""
+        try:
+            if not chart_files:
+                return
+            
+            self.add_section_header("תרשימים וויזואליזציות", 1)
+            
+            chart_descriptions = {
+                'correlation_heatmap.png': 'מטריצת קורלציות - מציגה את הקשרים בין העמודות המספריות',
+                'missing_values.png': 'ערכים חסרים - מציג את כמות הערכים החסרים בכל עמודה',
+                'distributions.png': 'התפלגויות - מציג את התפלגות הערכים בעמודות המספריות',
+                'top_categories': 'קטגוריות נפוצות - מציג את הערכים השכיחים ביותר',
+                'scatter_': 'תרשים פיזור עם קו מגמה',
+                'box_plot.png': 'תרשים קופסאות לעמודות מספריות',
+                'violin_plot.png': 'תרשים כינור לעמודות נבחרות',
+                'pie_': 'תרשים עוגה (Top 5 קטגוריות)',
+                'area_timeseries.png': 'תרשים שטח - סדרת זמן יומית'
+            }
+            
+            for i, chart_file in enumerate(chart_files):
+                if os.path.exists(chart_file):
+                    # Add chart description
+                    filename = os.path.basename(chart_file)
+                    description = "תרשים נתונים"
+                    
+                    for key, desc in chart_descriptions.items():
+                        if key in filename:
+                            description = desc
+                            break
+                    
+                    self.add_text(f"תרשים {i+1}: {description}", 12, bold=True)
+                    
+                    # Add the chart
+                    self.add_chart(chart_file)
+                    
+        except Exception as e:
+            logger.error(f"Error adding charts section: {e}")
+    
+    def add_chart(self, chart_file_path: str):
+        """הוספת תרשים בודד לדוח"""
+        try:
+            if not os.path.exists(chart_file_path):
+                logger.warning(f"Chart file not found: {chart_file_path}")
+                return
+            
+            # Check if new page needed
+            if self.current_y > self.page_height - 120:
+                self.pdf.add_page()
+                self.current_y = self.margin + 10
+            
+            # Add the chart
+            chart_width = self.page_width - 2 * self.margin
+            chart_height = 100
+            
+            self.pdf.image(chart_file_path, x=self.margin, y=self.current_y, 
+                          w=chart_width, h=chart_height)
+            
+            self.current_y += chart_height + 10
+            
+        except Exception as e:
+            logger.error(f"Error adding chart: {e}")
+    
+    def generate_comprehensive_report(self, df: pd.DataFrame, 
+                                    output_path: str = "data_analysis_report.pdf") -> str:
+        """יצירת דוח מקיף מנתונים אמיתיים"""
+        try:
+            # Analyze the data
+            analysis_results = self.analyze_real_data(df)
+            
+            if 'error' in analysis_results:
+                logger.error(f"Analysis failed: {analysis_results['error']}")
+                return None
+            
+            # Create title page
+            self.create_title_page(
+                title="דוח ניתוח נתונים מקיף",
+                subtitle="ניתוח אוטומטי מלא של מערך הנתונים"
+            )
+            
+            # Add table of contents
+            self.add_section_header("תוכן עניינים", 1)
+            toc_items = [
+                "1. סיכום נתונים",
+                "2. ניתוח עמודות", 
+                "3. תובנות עיקריות",
+                "4. ניתוח קורלציות",
+                "5. ניתוח ערכים חריגים",
+                "6. המלצות לשיפור",
+                "7. תרשימים וויזואליזציות"
+            ]
+            
+            for item in toc_items:
+                self.add_text(item, 12, bold=True, indent=10)
+            
+            # Add content sections
+            if 'basic_info' in analysis_results:
+                self.add_data_summary(analysis_results['basic_info'])
+                
+                if 'column_details' in analysis_results['basic_info']:
+                    self.add_column_analysis(analysis_results['basic_info']['column_details'])
+            
+            if 'insights' in analysis_results:
+                self.add_insights_section(analysis_results['insights'])
+            
+            if 'strong_correlations' in analysis_results:
+                self.add_correlation_section(analysis_results['strong_correlations'])
+            
+            if 'outliers' in analysis_results:
+                self.add_outliers_section(analysis_results['outliers'])
+            
+            # Add recommendations
+            self.add_recommendations_section(analysis_results, df)
+            
+            # Create and add charts
+            chart_files = self.create_visualizations(df)
+            if chart_files:
+                self.add_charts_section(chart_files)
+            
+            # Save the report
+            self.pdf.output(output_path)
+            logger.info(f"Comprehensive PDF report generated: {output_path}")
+            
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error generating comprehensive report: {e}")
+            return None
+
+
+def generate_complete_data_report(df: pd.DataFrame, 
+                                output_path: str = "complete_data_report.pdf",
+                                include_charts: bool = True) -> str:
+    """
+    פונקציה ראשית ליצירת דוח מקיף מנתונים
+    Main function to generate comprehensive report from real data
+    
+    Args:
+        df: DataFrame with your data
+        output_path: Path for the output PDF file
+        include_charts: Whether to include charts and visualizations
+    
+    Returns:
+        str: Path to the generated PDF file, or None if failed
+    """
+    try:
+        # Validate input
+        if df is None or df.empty:
+            logger.error("DataFrame is empty or None")
+            return None
+        
+        # Create report generator
+        report = HebrewPDFReport()
+        
+        # Generate comprehensive report
+        result_path = report.generate_comprehensive_report(df, output_path)
+        
+        return result_path
         
     except Exception as e:
-        print(f"Error starting bot: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in generate_complete_data_report: {e}")
+        return None
 
-if __name__ == "__main__":
-    main()
+
+def analyze_csv_file(csv_file_path: str, output_pdf_path: str = None) -> str:
+    """
+    ניתוח קובץ CSV ויצירת דוח PDF
+    Analyze CSV file and create PDF report
+    
+    Args:
+        csv_file_path: Path to CSV file
+        output_pdf_path: Output PDF path (optional)
+    
+    Returns:
+        str: Path to generated PDF report
+    """
+    try:
+        # Read CSV file
+        df = pd.read_csv(csv_file_path, encoding='utf-8')
+        
+        # Set default output path if not provided
+        if output_pdf_path is None:
+            base_name = os.path.splitext(os.path.basename(csv_file_path))[0]
+            output_pdf_path = f"דוח_ניתוח_{base_name}.pdf"
+        
+        # Generate report
+        return generate_complete_data_report(df, output_pdf_path, include_charts=True)
+        
+    except Exception as e:
+        logger.error(f"Error analyzing CSV file: {e}")
+        return None
+
+
+def analyze_excel_file(excel_file_path: str, sheet_name: Union[str, int] = 0, 
+                      output_pdf_path: str = None) -> str:
+    """
+    ניתוח קובץ Excel ויצירת דוח PDF
+    Analyze Excel file and create PDF report
+    
+    Args:
+        excel_file_path: Path to Excel file
+        sheet_name: Sheet name or index
+        output_pdf_path: Output PDF path (optional)
+    
+    Returns:
+        str: Path to generated PDF report
+    """
+    try:
+        # Read Excel file
+        df = pd.read_excel(excel_file_path, sheet_name=sheet_name)
+        
+        # Set default output path if not provided
+        if output_pdf_path is None:
+            base_name = os.path.splitext(os.path.basename(excel_file_path))[0]
+            output_pdf_path = f"דוח_ניתוח_{base_name}.pdf"
+        
+        # Generate report
+        return generate_complete_data_report(df, output_pdf_path, include_charts=True)
+        
+    except Exception as e:
+        logger.error(f"Error analyzing Excel file: {e}")
+        return None
