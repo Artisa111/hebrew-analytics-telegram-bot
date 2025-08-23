@@ -958,7 +958,7 @@ class HebrewPDFReport:
             chart_height = 100
             
             self.pdf.image(chart_file_path, x=self.margin, y=self.current_y, 
-                          w=chart_width, h=chart_height)
+                          w=chart_width, h=chart_height) 
             
             self.current_y += chart_height + 10
             
