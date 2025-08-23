@@ -823,7 +823,7 @@ class SimpleHebrewBot:
             if chart_files:
                 await update.message.reply_text(f"✅ נוצרו {len(chart_files)} תרשימים מקצועיים עם המחולל המשופר!")
                 
-                # סוגי התרשימים החדשים
+                # סוגי התרשימים החדשים (עברית + אנגלית)
                 enhanced_chart_types = {
                     'statistical_summary': '📋 סיכום סטטיסטי',
                     'bar_chart': '📊 תרשים עמודות משופר',
@@ -835,20 +835,48 @@ class SimpleHebrewBot:
                     'correlation_heatmap': '🔥 מפת קורלציה',
                     'area_chart': '🏔️ תרשים שטח',
                     'radar_chart': '📡 תרשים רדאר',
-                    'treemap': '🌳 מפת עץ'
+                    'treemap': '🌳 מפת עץ',
+                    'pairplot': '🔗 זוגות משתנים (Pairplot)',
+                    'missing_values': '❗ ערכים חסרים לפי עמודה',
+                    'line_timeseries': '📈 ממוצע יומי',
+                    'top_categories_': '📊 קטגוריות מובילות'
+                }
+                enhanced_chart_types_en = {
+                    'statistical_summary': 'Statistical summary',
+                    'bar_chart': 'Bar chart',
+                    'histogram': 'Histogram with stats',
+                    'scatter_plot': 'Scatter plot with trend',
+                    'box_plot': 'Box plot',
+                    'pie_chart': 'Pie chart',
+                    'violin_plot': 'Violin plot',
+                    'correlation_heatmap': 'Correlation heatmap',
+                    'area_chart': 'Area chart',
+                    'radar_chart': 'Radar chart',
+                    'treemap': 'Treemap',
+                    'pairplot': 'Pairplot',
+                    'missing_values': 'Missing values by column',
+                    'line_timeseries': 'Daily average',
+                    'top_categories_': 'Top categories'
                 }
                 
                 for i, chart_file in enumerate(chart_files):
                     try:
                         with open(chart_file, 'rb') as img_file:
                             # זיהוי סוג התרשים
-                            chart_type = "תרשים מקצועי משופר"
+                            filename = os.path.basename(chart_file)
+                            chart_type_he = "תרשים מקצועי משופר"
+                            chart_type_en = "Professional chart"
                             for key, value in enhanced_chart_types.items():
-                                if key in os.path.basename(chart_file):
-                                    chart_type = value
+                                if key in filename:
+                                    chart_type_he = value
+                                    chart_type_en = enhanced_chart_types_en.get(key, chart_type_en)
                                     break
                             
-                            caption = f"📊 {chart_type}\n\n✨ נוצר עם מחולל התרשימים המשופר\n🎨 כולל תוויות בעברית ועיצוב מקצועי"
+                            caption = (
+                                f"{chart_type_he}\n{chart_type_en}\n\n"
+                                f"✨ נוצר עם מחולל התרשימים המשופר\n"
+                                f"🎨 כולל תוויות בעברית ועיצוב מקצועי"
+                            )
                             
                             await context.bot.send_photo(
                                 chat_id=update.effective_chat.id,
