@@ -245,6 +245,20 @@ class HebrewPDFReport:
                  indent: int = 0):
         """הוספת טקסט עם תמיכה מלאה ב-RTL"""
         try:
+            # Normalize inputs to avoid NoneType issues
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                text = str(text)
+            try:
+                font_size = float(font_size) if font_size is not None else 12.0
+            except Exception:
+                font_size = 12.0
+            try:
+                indent = float(indent) if indent is not None else 0.0
+            except Exception:
+                indent = 0.0
+            
             # Set font
             if bold:
                 self.pdf.set_font('Hebrew', 'B', font_size)
@@ -273,6 +287,10 @@ class HebrewPDFReport:
     def _wrap_text_rtl(self, text: str, max_width: float) -> List[str]:
         """חלוקת טקסט ארוך לשורות עם תמיכה ב-RTL"""
         try:
+            if text is None:
+                text = ""
+            if not isinstance(text, str):
+                text = str(text)
             words = text.split()
             lines = []
             current_line = ""
