@@ -12,6 +12,8 @@ import logging
 import os
 from config import CHART_CONFIG
 import matplotlib.font_manager as fm
+import arabic_reshaper
+from bidi.algorithm import get_display
 
 logger = logging.getLogger(__name__)
 
@@ -23,20 +25,11 @@ class ChartGenerator:
     def setup_hebrew_fonts(self):
         """הגדרת פונטים עבריים לתרשימים"""
         try:
-            # ניסיון להשתמש בפונט עברי
-            hebrew_fonts = ['Arial', 'David', 'DejaVu Sans', 'Liberation Sans']
-            
-            for font in hebrew_fonts:
-                try:
-                    plt.rcParams['font.family'] = font
-                    # בדיקה אם הפונט עובד
-                    test_fig, test_ax = plt.subplots()
-                    test_ax.text(0.5, 0.5, 'אבג', fontsize=12)
-                    plt.close(test_fig)
-                    logger.info(f"Hebrew font {font} set successfully")
-                    break
-                except:
-                    continue
+            # עדיפות לפונטים עם תמיכה בעברית
+            plt.rcParams['font.family'] = [
+                'Noto Sans Hebrew', 'DejaVu Sans', 'Arial Unicode MS', 'Arial', 'Tahoma', 'sans-serif'
+            ]
+            plt.rcParams['axes.unicode_minus'] = False
             
             # הגדרת סגנון התרשימים
             plt.style.use(CHART_CONFIG['style'])
@@ -47,6 +40,25 @@ class ChartGenerator:
             logger.warning(f"Could not set Hebrew fonts: {e}")
             # שימוש בפונט ברירת מחדל
             plt.rcParams['font.family'] = 'DejaVu Sans'
+
+    @staticmethod
+    def _he(text: str) -> str:
+        """עיצוב טקסט לעברית: shaping + bidi במידת הצורך."""
+        try:
+            if text is None:
+                return ""
+            s = str(text)
+            if any('\u0590' <= ch <= '\u05FF' for ch in s):
+                return get_display(arabic_reshaper.reshape(s))
+            return s
+        except Exception:
+            return str(text)
+
+    def _he_list(self, values) -> list:
+        try:
+            return [self._he(v) for v in list(values)]
+        except Exception:
+            return [str(v) for v in list(values)]
     
     def create_bar_chart(self, df: pd.DataFrame, x_column: str, y_column: str, 
                          title: str = "תרשים עמודות", max_bars: int = 20) -> str:
@@ -66,12 +78,12 @@ class ChartGenerator:
                           color=sns.color_palette("husl", len(df_sorted)))
             
             # הגדרת תוויות
-            plt.xlabel(x_column, fontsize=12)
-            plt.ylabel(y_column, fontsize=12)
-            plt.title(title, fontsize=14, fontweight='bold')
+            plt.xlabel(self._he(x_column), fontsize=12)
+            plt.ylabel(self._he(y_column), fontsize=12)
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
             
             # הגדרת תוויות ציר X
-            plt.xticks(range(len(df_sorted)), df_sorted[x_column], rotation=45, ha='right')
+            plt.xticks(range(len(df_sorted)), self._he_list(df_sorted[x_column]), rotation=45, ha='right')
             
             # הוספת ערכים על העמודות
             for i, bar in enumerate(bars):
@@ -103,9 +115,9 @@ class ChartGenerator:
                     marker='o', linewidth=2, markersize=6)
             
             # הגדרת תוויות
-            plt.xlabel(x_column, fontsize=12)
-            plt.ylabel(y_column, fontsize=12)
-            plt.title(title, fontsize=14, fontweight='bold')
+            plt.xlabel(self._he(x_column), fontsize=12)
+            plt.ylabel(self._he(y_column), fontsize=12)
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
             
             # סיבוב תוויות ציר X אם יש צורך
             if len(df_sorted) > 10:
@@ -146,10 +158,10 @@ class ChartGenerator:
             
             # יצירת התרשים
             colors = plt.cm.Set3(np.linspace(0, 1, len(values)))
-            wedges, texts, autotexts = plt.pie(values, labels=labels, autopct='%1.1f%%',
+            wedges, texts, autotexts = plt.pie(values, labels=self._he_list(labels), autopct='%1.1f%%',
                                               colors=colors, startangle=90)
             
-            plt.title(title, fontsize=14, fontweight='bold')
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
             
             # הגדרת תוויות
             for autotext in autotexts:
@@ -180,10 +192,10 @@ class ChartGenerator:
                        label=f'ממוצע: {mean_val:.2f}')
             
             # הגדרת תוויות
-            plt.xlabel(column, fontsize=12)
-            plt.ylabel('תדירות', fontsize=12)
-            plt.title(title, fontsize=14, fontweight='bold')
-            plt.legend()
+            plt.xlabel(self._he(column), fontsize=12)
+            plt.ylabel(self._he('תדירות'), fontsize=12)
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
+            plt.legend(labels=[self._he(f'ממוצע: {mean_val:.2f}')])
             plt.grid(True, alpha=0.3)
             
             plt.tight_layout()
@@ -205,7 +217,7 @@ class ChartGenerator:
                 # פיזור עם צבעים לפי עמודה שלישית
                 scatter = plt.scatter(df[x_column], df[y_column], 
                                     c=df[color_column], cmap='viridis', alpha=0.7)
-                plt.colorbar(scatter, label=color_column)
+                plt.colorbar(scatter, label=self._he(color_column))
             else:
                 # פיזור רגיל
                 plt.scatter(df[x_column], df[y_column], alpha=0.7, color='blue')
@@ -217,9 +229,9 @@ class ChartGenerator:
                 plt.plot(df[x_column], p(df[x_column]), "r--", alpha=0.8, linewidth=2)
             
             # הגדרת תוויות
-            plt.xlabel(x_column, fontsize=12)
-            plt.ylabel(y_column, fontsize=12)
-            plt.title(title, fontsize=14, fontweight='bold')
+            plt.xlabel(self._he(x_column), fontsize=12)
+            plt.ylabel(self._he(y_column), fontsize=12)
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
             plt.grid(True, alpha=0.3)
             
             plt.tight_layout()
@@ -240,13 +252,13 @@ class ChartGenerator:
             if group_column and group_column in df.columns:
                 # תרשים קופסה מקבוצע לפי קבוצה
                 df.boxplot(column=column, by=group_column, ax=plt.gca())
-                plt.title(f"{title} לפי {group_column}", fontsize=14, fontweight='bold')
+                plt.title(self._he(f"{title} לפי {group_column}"), fontsize=14, fontweight='bold')
             else:
                 # תרשים קופסה פשוט
                 plt.boxplot(df[column].dropna())
-                plt.title(title, fontsize=14, fontweight='bold')
+                plt.title(self._he(title), fontsize=14, fontweight='bold')
             
-            plt.ylabel(column, fontsize=12)
+            plt.ylabel(self._he(column), fontsize=12)
             plt.grid(True, alpha=0.3)
             
             plt.tight_layout()
@@ -269,7 +281,7 @@ class ChartGenerator:
             sns.heatmap(correlation_matrix, mask=mask, annot=True, cmap='coolwarm', 
                        center=0, square=True, linewidths=0.5)
             
-            plt.title(title, fontsize=14, fontweight='bold')
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
             plt.tight_layout()
             
             filename = self._save_chart("correlation_heatmap")
@@ -290,10 +302,10 @@ class ChartGenerator:
             
             # הוספת הטקסט
             for i, insight in enumerate(insights):
-                plt.text(0.1, i, insight, fontsize=10, va='center', ha='left')
+                plt.text(0.1, i, self._he(insight), fontsize=10, va='center', ha='left')
             
-            plt.title(title, fontsize=14, fontweight='bold')
-            plt.xlabel('תובנות', fontsize=12)
+            plt.title(self._he(title), fontsize=14, fontweight='bold')
+            plt.xlabel(self._he('תובנות'), fontsize=12)
             plt.yticks([])
             plt.xlim(0, 1.2)
             

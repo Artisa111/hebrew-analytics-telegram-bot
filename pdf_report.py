@@ -707,11 +707,11 @@ class HebrewPDFReport:
             # Add recommendations to report
             for i, rec in enumerate(recommendations, 1):
                 if i <= len(recommendations) - len(general_recommendations):
-                    # Specific recommendations
-                    self.add_text(f"🎯 {rec}", 11, bold=True, indent=5)
+                    # Specific recommendations (no emoji to ensure glyph availability)
+                    self.add_text(f"• {rec}", 11, bold=True, indent=5)
                 else:
                     # General recommendations
-                    self.add_text(f"💡 {rec}", 11, indent=5)
+                    self.add_text(f"• {rec}", 11, indent=5)
             
         except Exception as e:
             logger.error(f"Error adding recommendations: {e}")
@@ -891,8 +891,8 @@ class HebrewPDFReport:
                         counts = ts.dt.to_period('D').value_counts().sort_index()
                         x = range(len(counts))
                         plt.figure(figsize=(12, 5))
-                        plt.plot(x, counts.values, color='tab:blue')
-                        plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
+                        # Line chart with markers, without area fill
+                        plt.plot(x, counts.values, color='tab:blue', marker='o', linewidth=2)
                         plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
                         plt.title(self._fix_hebrew_text('תרשים שטח - ספירת רשומות לפי יום'), fontsize=16, pad=20)
                         plt.tight_layout()
