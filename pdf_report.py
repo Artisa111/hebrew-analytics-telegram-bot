@@ -28,7 +28,7 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Configure matplotlib for Hebrew
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'Tahoma']
+plt.rcParams['font.family'] = ['Noto Sans Hebrew', 'DejaVu Sans', 'Arial Unicode MS', 'Arial', 'Tahoma']
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +59,13 @@ class HebrewPDFReport:
         except Exception as e:
             logger.warning(f"Error fixing Hebrew text: {e}")
             return text
+
+    def _fix_list(self, values) -> list:
+        """Apply Hebrew fix to a sequence of strings for tick labels."""
+        try:
+            return [self._fix_hebrew_text(str(v)) for v in list(values)]
+        except Exception:
+            return [str(v) for v in list(values)]
     
     def setup_hebrew_support(self):
         """הגדרת תמיכה מלאה בעברית ל-PDF"""
@@ -728,7 +735,7 @@ class HebrewPDFReport:
                 
                 sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', center=0,
                            square=True, linewidths=0.5, cbar_kws={"shrink": .8})
-                plt.title('מטריצת קורלציות', fontsize=16, pad=20)
+                plt.title(self._fix_hebrew_text('מטריצת קורלציות'), fontsize=16, pad=20)
                 plt.tight_layout()
                 
                 chart_path = os.path.join(output_dir, 'correlation_heatmap.png')
@@ -743,9 +750,9 @@ class HebrewPDFReport:
                 missing_data = missing_data[missing_data > 0].sort_values(ascending=False)
                 
                 plt.bar(range(len(missing_data)), missing_data.values)
-                plt.xticks(range(len(missing_data)), missing_data.index, rotation=45, ha='right')
-                plt.title('ערכים חסרים לפי עמודה', fontsize=16, pad=20)
-                plt.ylabel('מספר ערכים חסרים')
+                plt.xticks(range(len(missing_data)), self._fix_list(missing_data.index), rotation=45, ha='right')
+                plt.title(self._fix_hebrew_text('ערכים חסרים לפי עמודה'), fontsize=16, pad=20)
+                plt.ylabel(self._fix_hebrew_text('מספר ערכים חסרים'))
                 plt.tight_layout()
                 
                 chart_path = os.path.join(output_dir, 'missing_values.png')
@@ -768,8 +775,8 @@ class HebrewPDFReport:
                 for i, col in enumerate(numeric_cols):
                     if i < len(axes):
                         df[col].hist(bins=30, ax=axes[i], alpha=0.7)
-                        axes[i].set_title(f'התפלגות: {col}')
-                        axes[i].set_ylabel('תכיפות')
+                        axes[i].set_title(self._fix_hebrew_text(f'התפלגות: {col}'))
+                        axes[i].set_ylabel(self._fix_hebrew_text('תכיפות'))
                 
                 # Hide empty subplots
                 for i in range(len(numeric_cols), len(axes)):
@@ -789,9 +796,9 @@ class HebrewPDFReport:
                     
                     top_values = df[col].value_counts().head(10)
                     plt.bar(range(len(top_values)), top_values.values)
-                    plt.xticks(range(len(top_values)), top_values.index, rotation=45, ha='right')
-                    plt.title(f'ערכים נפוצים: {col}', fontsize=16, pad=20)
-                    plt.ylabel('תכיפות')
+                    plt.xticks(range(len(top_values)), self._fix_list(top_values.index), rotation=45, ha='right')
+                    plt.title(self._fix_hebrew_text(f'ערכים נפוצים: {col}'), fontsize=16, pad=20)
+                    plt.ylabel(self._fix_hebrew_text('תכיפות'))
                     plt.tight_layout()
                     
                     chart_path = os.path.join(output_dir, f'top_categories_{col}.png')
@@ -815,7 +822,7 @@ class HebrewPDFReport:
                             continue
                         plt.figure(figsize=(8, 6))
                         sns.regplot(x=df[x_col], y=df[y_col], scatter_kws={'alpha': 0.5})
-                        plt.title(f'תרשים פיזור: {x_col} מול {y_col}', fontsize=14)
+                        plt.title(self._fix_hebrew_text(f'תרשים פיזור: {x_col} מול {y_col}'), fontsize=14)
                         plt.xlabel(x_col)
                         plt.ylabel(y_col)
                         plt.tight_layout()
@@ -831,7 +838,7 @@ class HebrewPDFReport:
                 try:
                     plt.figure(figsize=(12, 6))
                     sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
-                    plt.title('תרשים קופסאות לעמודות מספריות', fontsize=16, pad=20)
+                    plt.title(self._fix_hebrew_text('תרשים קופסאות לעמודות מספריות'), fontsize=16, pad=20)
                     plt.tight_layout()
                     chart_path = os.path.join(output_dir, 'box_plot.png')
                     plt.savefig(chart_path, dpi=300, bbox_inches='tight')
@@ -847,8 +854,8 @@ class HebrewPDFReport:
                     data_to_plot = [df[c].dropna().values for c in selected]
                     plt.figure(figsize=(12, 6))
                     parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
-                    plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
-                    plt.title('תרשים כינור לעמודות נבחרות', fontsize=16, pad=20)
+                    plt.xticks(range(1, len(selected)+1), self._fix_list(selected), rotation=30, ha='right')
+                    plt.title(self._fix_hebrew_text('תרשים כינור לעמודות נבחרות'), fontsize=16, pad=20)
                     plt.tight_layout()
                     chart_path = os.path.join(output_dir, 'violin_plot.png')
                     plt.savefig(chart_path, dpi=300, bbox_inches='tight')
@@ -865,7 +872,7 @@ class HebrewPDFReport:
                     if not top_values.empty:
                         plt.figure(figsize=(8, 8))
                         plt.pie(top_values.values, labels=top_values.index, autopct='%1.1f%%', startangle=140)
-                        plt.title(f'התפלגות קטגוריות (Top 5): {col}', fontsize=16, pad=20)
+                        plt.title(self._fix_hebrew_text(f'התפלגות קטגוריות (Top 5): {col}'), fontsize=16, pad=20)
                         plt.tight_layout()
                         chart_path = os.path.join(output_dir, f'pie_{col}.png')
                         plt.savefig(chart_path, dpi=300, bbox_inches='tight')
@@ -887,7 +894,7 @@ class HebrewPDFReport:
                         plt.plot(x, counts.values, color='tab:blue')
                         plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
                         plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
-                        plt.title('תרשים שטח - ספירת רשומות לפי יום', fontsize=16, pad=20)
+                        plt.title(self._fix_hebrew_text('תרשים שטח - ספירת רשומות לפי יום'), fontsize=16, pad=20)
                         plt.tight_layout()
                         chart_path = os.path.join(output_dir, 'area_timeseries.png')
                         plt.savefig(chart_path, dpi=300, bbox_inches='tight')

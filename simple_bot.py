@@ -24,6 +24,30 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_complete_data_report
+import arabic_reshaper
+from bidi.algorithm import get_display
+
+def _hebrew_text(text: str) -> str:
+    """
+    Shape and reorder text for proper Hebrew RTL display in matplotlib.
+    Only applies shaping when Hebrew characters are present.
+    """
+    try:
+        if text is None:
+            return ""
+        s = str(text)
+        if any('\u0590' <= ch <= '\u05FF' for ch in s):
+            return get_display(arabic_reshaper.reshape(s))
+        return s
+    except Exception:
+        return str(text)
+
+def _hebrew_list(values) -> list:
+    """Apply _hebrew_text to each element of an iterable for tick/label lists."""
+    try:
+        return [_hebrew_text(v) for v in list(values)]
+    except Exception:
+        return [str(v) for v in list(values)]
 
 # ENHANCED CHART GENERATOR SECTION
 # This section contains an embedded enhanced chart generator that doesn't require external modules
@@ -107,19 +131,21 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         fig_height = min(14, 2 + 0.55 * n_rows)
                         plt.figure(figsize=(fig_width, fig_height))
                         plt.axis('off')
-                        plt.title('סיכום סטטיסטי', fontsize=16, fontweight='bold', pad=20)
+                        plt.title(_hebrew_text('סיכום סטטיסטי'), fontsize=16, fontweight='bold', pad=20)
                         
                         # Create formatted table
                         table = plt.table(
                             cellText=formatted.values,
-                            colLabels=formatted.columns,
-                            rowLabels=formatted.index,
-                            cellLoc='center',
+                            colLabels=_hebrew_list([str(c) for c in formatted.columns]),
+                            rowLabels=_hebrew_list([str(r) for r in formatted.index]),
+                            cellLoc='right',
                             loc='center'
                         )
                         table.auto_set_font_size(False)
                         table.set_fontsize(10)
                         table.scale(1, 1.2)
+                        for (_, _), cell in table.get_celld().items():
+                            cell.set_text_props(ha='right')
                         
                         # Style the table
                         for key, cell in table.get_celld().items():
@@ -147,9 +173,9 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                             total = int(top_vals.sum())
                             plt.figure(figsize=(10, 6))
                             bars = plt.bar(range(len(top_vals)), top_vals.values)
-                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
-                            plt.title(f'קטגוריות מובילות: {col}')
-                            plt.ylabel('תדירות')
+                            plt.xticks(range(len(top_vals)), _hebrew_list([str(v) for v in top_vals.index]), rotation=45, ha='right')
+                            plt.title(_hebrew_text(f'קטגוריות מובילות: {col}'))
+                            plt.ylabel(_hebrew_text('תדירות'))
                             
                             # Add percentage labels on bars
                             for i, b in enumerate(bars):
@@ -172,7 +198,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         col = numeric_cols[0]
                         plt.figure(figsize=(9, 6))
                         plt.hist(df[col].dropna(), bins=30, alpha=0.8)
-                        plt.title(f'היסטוגרמה: {col}')
+                        plt.title(_hebrew_text(f'היסטוגרמה: {col}'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, f'histogram_{col}.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -186,7 +212,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                     if len(numeric_cols) > 0:
                         plt.figure(figsize=(12, 6))
                         sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
-                        plt.title('תרשים קופסאות לעמודות מספריות')
+                        plt.title(_hebrew_text('תרשים קופסאות לעמודות מספריות'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, 'box_plot.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -202,8 +228,8 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         data_to_plot = [df[c].dropna().values for c in selected]
                         plt.figure(figsize=(12, 6))
                         parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
-                        plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
-                        plt.title('תרשים כינור לעמודות נבחרות')
+                        plt.xticks(range(1, len(selected)+1), _hebrew_list([str(s) for s in selected]), rotation=30, ha='right')
+                        plt.title(_hebrew_text('תרשים כינור לעמודות נבחרות'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, 'violin_plot.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -218,7 +244,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         x, y = numeric_cols[:2]
                         plt.figure(figsize=(9, 6))
                         sns.regplot(x=df[x], y=df[y], scatter_kws={'alpha': 0.5})
-                        plt.title(f'תרשים פיזור: {x} מול {y}')
+                        plt.title(_hebrew_text(f'תרשים פיזור: {x} מול {y}'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, f'scatter_plot_{x}_vs_{y}.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -233,7 +259,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         corr = df[numeric_cols].corr()
                         plt.figure(figsize=(10, 8))
                         sns.heatmap(corr, annot=False, cmap='coolwarm', center=0)
-                        plt.title('מפת קורלציה')
+                        plt.title(_hebrew_text('מפת קורלציה'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, 'correlation_heatmap.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -247,7 +273,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                     if len(numeric_cols) > 1:
                         subset = list(numeric_cols)[:4]
                         g = sns.pairplot(df[subset].dropna())
-                        g.fig.suptitle('Pairplot - קשרים בין עמודות', y=1.02)
+                        g.fig.suptitle(_hebrew_text('Pairplot - קשרים בין עמודות'), y=1.02)
                         path = os.path.join(out_dir, 'pairplot.png')
                         g.fig.savefig(path, dpi=220, bbox_inches='tight')
                         plt.close('all')
@@ -263,9 +289,9 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                         missing = missing[missing > 0].sort_values(ascending=False).head(20)
                         plt.figure(figsize=(12, 6))
                         plt.bar(range(len(missing)), missing.values)
-                        plt.xticks(range(len(missing)), missing.index, rotation=45, ha='right')
-                        plt.title('ערכים חסרים לפי עמודה')
-                        plt.ylabel('כמות ערכים חסרים')
+                        plt.xticks(range(len(missing)), _hebrew_list([str(v) for v in missing.index]), rotation=45, ha='right')
+                        plt.title(_hebrew_text('ערכים חסרים לפי עמודה'))
+                        plt.ylabel(_hebrew_text('כמות ערכים חסרים'))
                         plt.tight_layout()
                         path = os.path.join(out_dir, 'missing_values.png')
                         plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -287,7 +313,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                             plt.plot(x, counts.values, color='tab:blue')
                             plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
                             plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
-                            plt.title('תרשים שטח - ספירת רשומות לפי יום')
+                            plt.title(_hebrew_text('תרשים שטח - ספירת רשומות לפי יום'))
                             plt.tight_layout()
                             path = os.path.join(out_dir, 'area_chart_timeseries.png')
                             plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -309,7 +335,7 @@ def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
                             plt.figure(figsize=(12, 5))
                             plt.plot(x, daily.values, marker='o')
                             plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in daily.index[::max(1, len(x)//10)]], rotation=45, ha='right')
-                            plt.title(f'ממוצע יומי: {num_col}')
+                            plt.title(_hebrew_text(f'ממוצע יומי: {num_col}'))
                             plt.tight_layout()
                             path = os.path.join(out_dir, 'line_timeseries.png')
                             plt.savefig(path, dpi=220, bbox_inches='tight')
@@ -372,7 +398,7 @@ logger = _configure_logging()
 
 # MATPLOTLIB HEBREW FONT CONFIGURATION
 # Configure matplotlib to support Hebrew text rendering
-plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
+plt.rcParams['font.family'] = ['Noto Sans Hebrew', 'DejaVu Sans', 'Arial Unicode MS', 'Arial', 'Tahoma', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
 # MAIN BOT CLASS SECTION
