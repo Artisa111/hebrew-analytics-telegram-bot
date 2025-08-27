@@ -1,20 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-בוט פשוט לבדיקה - Simple bot for testing with advanced PDF generation
+Simple bot for testing with advanced PDF generation
+Hebrew Telegram bot for data analysis with comprehensive reporting capabilities
 """
 
-# Initialize logging before other imports
-from logging_config import setup_logging
-logger = setup_logging()
-
+# IMPORT SECTION - All necessary libraries for the bot functionality
+import logging
+import sys
 import os
 import pandas as pd
 import numpy as np
 import tempfile
 import shutil
-import matplotlib
-# Enforce headless backend before importing pyplot
-matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
@@ -28,33 +25,390 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, r2_score
 from pdf_report import generate_complete_data_report
 
-# Setup logging
-logger.info("Simple Hebrew Bot starting with advanced PDF generation")
+# ENHANCED CHART GENERATOR SECTION
+# This section contains an embedded enhanced chart generator that doesn't require external modules
+def get_enhanced_chart_generator():  # noqa: N802 - keep external API name
+    """
+    Factory function that returns an enhanced chart generator instance.
+    This creates comprehensive dashboards with multiple chart types.
+    """
+    class EnhancedChartGenerator:
+        def create_comprehensive_dashboard(self, df, analysis_results=None, output_dir=None):
+            """
+            Creates a comprehensive dashboard with multiple chart types including:
+            - Statistical summary tables
+            - Bar charts for categorical data
+            - Histograms for numerical data
+            - Box plots and violin plots
+            - Scatter plots with trend lines
+            - Correlation heatmaps
+            - Time series charts
+            - Missing value analysis
+            """
+            try:
+                # Setup output directory for charts
+                out_dir = output_dir or os.path.join(os.getcwd(), 'temp_charts')
+                os.makedirs(out_dir, exist_ok=True)
+                chart_files = []
+                generated_signatures = set()
 
-# Настройка matplotlib для поддержки иврита
+                def add_chart(path: str, signature: str):
+                    """Helper function to add chart to list if not already generated"""
+                    if not path:
+                        return
+                    if signature in generated_signatures:
+                        return
+                    generated_signatures.add(signature)
+                    chart_files.append(path)
+
+                # Identify column types for appropriate chart selection
+                numeric_cols = df.select_dtypes(include=[np.number]).columns
+                categorical_cols = df.select_dtypes(include=['object']).columns
+
+                # CHART TYPE 1: Statistical Summary Table (Hebrew labels)
+                try:
+                    if len(numeric_cols) > 0:
+                        # Generate comprehensive statistics
+                        summary = df[numeric_cols].describe(percentiles=[0.25, 0.5, 0.75]).T
+                        cols_order = ['count', 'mean', 'std', 'min', '25%', '50%', '75%', 'max']
+                        summary = summary[[c for c in cols_order if c in summary.columns]]
+                        
+                        # Hebrew translation of statistical terms
+                        summary = summary.rename(columns={
+                            'count': 'ספירה',
+                            'mean': 'ממוצע',
+                            'std': 'סטיית תקן',
+                            'min': 'מינימום',
+                            '25%': 'רבעון ראשון',
+                            '50%': 'חציון',
+                            '75%': 'רבעון שלישי',
+                            'max': 'מקסימום'
+                        })
+                        
+                        # Limit rows for better visualization
+                        max_rows = 18
+                        if len(summary) > max_rows:
+                            summary = summary.head(max_rows)
+                        
+                        # Format numeric values for display
+                        def _format_value(val):
+                            try:
+                                return f"{float(val):,.2f}".replace(',', ',')
+                            except Exception:
+                                return str(val)
+                        
+                        formatted = summary.copy()
+                        for col in formatted.columns:
+                            formatted[col] = formatted[col].apply(_format_value)
+                        
+                        # Create table visualization
+                        n_rows, n_cols = formatted.shape
+                        fig_width = min(20, 2 + 1.2 * n_cols)
+                        fig_height = min(14, 2 + 0.55 * n_rows)
+                        plt.figure(figsize=(fig_width, fig_height))
+                        plt.axis('off')
+                        plt.title('סיכום סטטיסטי', fontsize=16, fontweight='bold', pad=20)
+                        
+                        # Create formatted table
+                        table = plt.table(
+                            cellText=formatted.values,
+                            colLabels=formatted.columns,
+                            rowLabels=formatted.index,
+                            cellLoc='center',
+                            loc='center'
+                        )
+                        table.auto_set_font_size(False)
+                        table.set_fontsize(10)
+                        table.scale(1, 1.2)
+                        
+                        # Style the table
+                        for key, cell in table.get_celld().items():
+                            row, col = key
+                            if row == 0:  # Header row
+                                cell.set_facecolor('#e0f2e9')
+                                cell.set_edgecolor('#5aa469')
+                                cell.set_linewidth(1)
+                            if col == -1:  # Row labels
+                                cell.set_facecolor('#f3f6fa')
+                        
+                        path = os.path.join(out_dir, 'statistical_summary.png')
+                        plt.tight_layout()
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, 'table:statistical_summary')
+                except Exception:
+                    pass
+
+                # CHART TYPE 2: Top Categories Bar Charts (up to 3 categorical columns)
+                try:
+                    for col in list(categorical_cols)[:3]:
+                        top_vals = df[col].value_counts().head(10)
+                        if not top_vals.empty:
+                            total = int(top_vals.sum())
+                            plt.figure(figsize=(10, 6))
+                            bars = plt.bar(range(len(top_vals)), top_vals.values)
+                            plt.xticks(range(len(top_vals)), top_vals.index, rotation=45, ha='right')
+                            plt.title(f'קטגוריות מובילות: {col}')
+                            plt.ylabel('תדירות')
+                            
+                            # Add percentage labels on bars
+                            for i, b in enumerate(bars):
+                                cnt = int(top_vals.values[i])
+                                pct = (cnt / total) * 100 if total > 0 else 0
+                                plt.text(b.get_x() + b.get_width()/2, b.get_height(), f"{cnt} ({pct:.1f}%)",
+                                         ha='center', va='bottom', fontsize=9)
+                            
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, f'top_categories_{col}.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            add_chart(path, f"topcat:{col}")
+                except Exception:
+                    pass
+
+                # CHART TYPE 3: Histogram for first numeric column
+                try:
+                    if len(numeric_cols) > 0:
+                        col = numeric_cols[0]
+                        plt.figure(figsize=(9, 6))
+                        plt.hist(df[col].dropna(), bins=30, alpha=0.8)
+                        plt.title(f'היסטוגרמה: {col}')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, f'histogram_{col}.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, f"hist:{col}")
+                except Exception:
+                    pass
+
+                # CHART TYPE 4: Box Plot (horizontal, consolidated)
+                try:
+                    if len(numeric_cols) > 0:
+                        plt.figure(figsize=(12, 6))
+                        sns.boxplot(data=df[numeric_cols], orient='h', showfliers=False)
+                        plt.title('תרשים קופסאות לעמודות מספריות')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'box_plot.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, 'box:all')
+                except Exception:
+                    pass
+
+                # CHART TYPE 5: Violin Plot for up to 6 numeric columns
+                try:
+                    if len(numeric_cols) > 1:
+                        selected = list(numeric_cols)[:6]
+                        data_to_plot = [df[c].dropna().values for c in selected]
+                        plt.figure(figsize=(12, 6))
+                        parts = plt.violinplot(data_to_plot, showmeans=True, showextrema=False)
+                        plt.xticks(range(1, len(selected)+1), selected, rotation=30, ha='right')
+                        plt.title('תרשים כינור לעמודות נבחרות')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'violin_plot.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, 'violin:all')
+                except Exception:
+                    pass
+
+                # CHART TYPE 6: Scatter Plot for two numeric columns with regression line
+                try:
+                    if len(numeric_cols) > 1:
+                        x, y = numeric_cols[:2]
+                        plt.figure(figsize=(9, 6))
+                        sns.regplot(x=df[x], y=df[y], scatter_kws={'alpha': 0.5})
+                        plt.title(f'תרשים פיזור: {x} מול {y}')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, f'scatter_plot_{x}_vs_{y}.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, f"scatter:{x}:{y}")
+                except Exception:
+                    pass
+
+                # CHART TYPE 7: Correlation Heatmap
+                try:
+                    if len(numeric_cols) > 1:
+                        corr = df[numeric_cols].corr()
+                        plt.figure(figsize=(10, 8))
+                        sns.heatmap(corr, annot=False, cmap='coolwarm', center=0)
+                        plt.title('מפת קורלציה')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'correlation_heatmap.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, 'heatmap:corr')
+                except Exception:
+                    pass
+
+                # CHART TYPE 8: Pairplot for up to 4 numeric columns
+                try:
+                    if len(numeric_cols) > 1:
+                        subset = list(numeric_cols)[:4]
+                        g = sns.pairplot(df[subset].dropna())
+                        g.fig.suptitle('Pairplot - קשרים בין עמודות', y=1.02)
+                        path = os.path.join(out_dir, 'pairplot.png')
+                        g.fig.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close('all')
+                        add_chart(path, 'pairplot:subset')
+                except Exception:
+                    pass
+
+                # CHART TYPE 9: Missing Values Analysis
+                try:
+                    total_missing = df.isnull().sum().sum()
+                    if total_missing > 0:
+                        missing = df.isnull().sum()
+                        missing = missing[missing > 0].sort_values(ascending=False).head(20)
+                        plt.figure(figsize=(12, 6))
+                        plt.bar(range(len(missing)), missing.values)
+                        plt.xticks(range(len(missing)), missing.index, rotation=45, ha='right')
+                        plt.title('ערכים חסרים לפי עמודה')
+                        plt.ylabel('כמות ערכים חסרים')
+                        plt.tight_layout()
+                        path = os.path.join(out_dir, 'missing_values.png')
+                        plt.savefig(path, dpi=220, bbox_inches='tight')
+                        plt.close()
+                        add_chart(path, 'missing:per_col')
+                except Exception:
+                    pass
+
+                # CHART TYPE 10: Time Series Area Chart (if datetime columns exist)
+                try:
+                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                    if len(dt_cols) > 0:
+                        col = dt_cols[0]
+                        ts = df[col].dropna()
+                        if not ts.empty:
+                            counts = ts.dt.to_period('D').value_counts().sort_index()
+                            x = range(len(counts))
+                            plt.figure(figsize=(12, 5))
+                            plt.plot(x, counts.values, color='tab:blue')
+                            plt.fill_between(x, counts.values, alpha=0.3, color='tab:blue')
+                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in counts.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                            plt.title('תרשים שטח - ספירת רשומות לפי יום')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, 'area_chart_timeseries.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            add_chart(path, 'area:counts_by_day')
+                except Exception:
+                    pass
+
+                # CHART TYPE 11: Time Series Line Chart (numeric mean by day)
+                try:
+                    dt_cols = df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns
+                    if len(dt_cols) > 0 and len(numeric_cols) > 0:
+                        dt_col = dt_cols[0]
+                        num_col = numeric_cols[0]
+                        tmp = df[[dt_col, num_col]].dropna()
+                        if not tmp.empty:
+                            daily = tmp.groupby(tmp[dt_col].dt.to_period('D'))[num_col].mean().sort_index()
+                            x = range(len(daily))
+                            plt.figure(figsize=(12, 5))
+                            plt.plot(x, daily.values, marker='o')
+                            plt.xticks(x[::max(1, len(x)//10)], [str(p) for p in daily.index[::max(1, len(x)//10)]], rotation=45, ha='right')
+                            plt.title(f'ממוצע יומי: {num_col}')
+                            plt.tight_layout()
+                            path = os.path.join(out_dir, 'line_timeseries.png')
+                            plt.savefig(path, dpi=220, bbox_inches='tight')
+                            plt.close()
+                            add_chart(path, f"line:mean_by_day:{num_col}")
+                except Exception:
+                    pass
+
+                return chart_files
+            except Exception:
+                return []
+
+    return EnhancedChartGenerator()
+
+# LOGGING CONFIGURATION SECTION
+# Setup logging with split handlers: INFO and below to stdout, WARNING+ to stderr
+class _MaxLevelFilter(logging.Filter):
+    """Custom filter to limit log levels to a maximum threshold"""
+    def __init__(self, max_level: int) -> None:
+        super().__init__()
+        self.max_level = max_level
+    
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.levelno <= self.max_level
+
+def _configure_logging() -> logging.Logger:
+    """
+    Configure logging with split handlers for better output management:
+    - stdout: DEBUG to INFO level messages
+    - stderr: WARNING level and above
+    """
+    logger = logging.getLogger()
+    if getattr(logger, "_configured_split_handlers", False):
+        return logging.getLogger(__name__)
+
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    # Handler for stdout: up to INFO level
+    stdout_handler = logging.StreamHandler(stream=sys.stdout)
+    stdout_handler.setLevel(logging.DEBUG)
+    stdout_handler.addFilter(_MaxLevelFilter(logging.INFO))
+    stdout_handler.setFormatter(formatter)
+
+    # Handler for stderr: WARNING and above
+    stderr_handler = logging.StreamHandler(stream=sys.stderr)
+    stderr_handler.setLevel(logging.WARNING)
+    stderr_handler.setFormatter(formatter)
+
+    # Clear existing handlers to avoid duplicates
+    logger.handlers.clear()
+    logger.addHandler(stdout_handler)
+    logger.addHandler(stderr_handler)
+    setattr(logger, "_configured_split_handlers", True)
+    
+    return logging.getLogger(__name__)
+
+# Initialize logger
+logger = _configure_logging()
+
+# MATPLOTLIB HEBREW FONT CONFIGURATION
+# Configure matplotlib to support Hebrew text rendering
 plt.rcParams['font.family'] = ['DejaVu Sans', 'Arial Unicode MS', 'sans-serif']
 plt.rcParams['axes.unicode_minus'] = False
 
+# MAIN BOT CLASS SECTION
 class SimpleHebrewBot:
+    """
+    Main Telegram bot class for Hebrew data analysis.
+    Provides comprehensive data analysis capabilities including:
+    - File upload and processing (CSV, Excel)
+    - Statistical analysis
+    - Chart generation
+    - Insights and recommendations
+    - PDF report generation (regular and advanced)
+    """
+    
     def __init__(self, bot_token: str):
+        """Initialize the bot with token and setup handlers"""
         self.application = Application.builder().token(bot_token).job_queue(None).persistence(None).build()
-        self.user_data = {}  # Простое хранилище данных пользователей
+        self.user_data = {}  # Simple user data storage
         self.setup_handlers()
     
     def setup_handlers(self):
-        """הגדרת handlers פשוטים"""
+        """Setup all bot command and message handlers"""
         self.application.add_handler(CommandHandler("start", self.start_command))
         self.application.add_handler(CommandHandler("help", self.help_command))
         self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text))
-        # Добавляем обработчик файлов
         self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
     
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """פקודת start פשוטה"""
+        """
+        Handle /start command - welcome message and keyboard setup
+        Initializes user data and provides main navigation keyboard
+        """
         user = update.effective_user
         user_id = user.id
         
-        # Инициализируем данные пользователя
+        # Initialize user data storage
         self.user_data[user_id] = {
             'data': None,
             'file_name': None,
@@ -63,11 +417,12 @@ class SimpleHebrewBot:
         
         welcome_text = f"ברוך הבא {user.first_name}! 🎉\n\nאני בוט ניתוח נתונים בעברית.\n\n📁 שלח לי קובץ CSV או Excel כדי להתחיל!"
         
+        # Create main navigation keyboard
         keyboard = [
             ['📊 ניתוח נתונים'],
             ['📈 תרשימים'],
             ['💡 תובנות והמלצות'],
-            ['📄 דוח PDF', '📊 דוח PDF מתקדם'],  # שתי אפשרויות PDF
+            ['📄 דוח PDF', '📊 דוח PDF מתקדם'],  # Two PDF options
             ['📁 העלאת קובץ'],
             ['❓ עזרה']
         ]
@@ -76,7 +431,7 @@ class SimpleHebrewBot:
         await update.message.reply_text(welcome_text, reply_markup=reply_markup)
     
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """פקודת help פשוטה"""
+        """Handle /help command - comprehensive help information"""
         help_text = """
 📚 **עזרה - בוט ניתוח נתונים בעברית**
 
@@ -111,22 +466,25 @@ class SimpleHebrewBot:
         await update.message.reply_text(help_text, parse_mode=ParseMode.MARKDOWN)
     
     def has_data(self, user_id: int) -> bool:
-        """Проверяет, есть ли данные у пользователя"""
+        """Check if user has valid data loaded"""
         if user_id not in self.user_data:
             return False
         data = self.user_data[user_id].get('data')
         return data is not None and isinstance(data, pd.DataFrame) and not data.empty
     
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בקבצים שהועלו"""
+        """
+        Handle file uploads - process CSV and Excel files
+        Supports multiple encodings and file formats with validation
+        """
         user_id = update.effective_user.id
         document = update.message.document
         
-        # Проверяем, есть ли пользователь в данных
+        # Initialize user data if not exists
         if user_id not in self.user_data:
             self.user_data[user_id] = {'data': None, 'file_name': None, 'analysis_done': False}
         
-        # Проверяем тип файла
+        # Validate file type
         file_name = document.file_name
         file_extension = os.path.splitext(file_name)[1].lower()
         
@@ -137,7 +495,7 @@ class SimpleHebrewBot:
             )
             return
         
-        # Проверяем размер файла (максимум 50MB)
+        # Validate file size (max 50MB)
         max_size = 50 * 1024 * 1024  # 50MB
         if document.file_size > max_size:
             await update.message.reply_text(
@@ -148,28 +506,28 @@ class SimpleHebrewBot:
         await update.message.reply_text("📁 קובץ התקבל! מעבד...")
         
         try:
-            # Скачиваем файл
+            # Download file
             file = await context.bot.get_file(document.file_id)
             
-            # Создаем временную папку
+            # Create temporary directory
             temp_dir = tempfile.mkdtemp()
             file_path = os.path.join(temp_dir, file_name)
             
-            # Скачиваем файл
+            # Download file to temporary location
             await file.download_to_drive(file_path)
             
-            # Читаем файл
+            # Read data file with appropriate method
             df = await self.read_data_file(file_path, file_extension)
             
             if df is not None and isinstance(df, pd.DataFrame) and not df.empty:
-                # Сохраняем данные пользователя
+                # Store user data
                 self.user_data[user_id].update({
                     'data': df,
                     'file_name': file_name,
                     'analysis_done': False
                 })
                 
-                # Показываем информацию о файле
+                # Display file information
                 rows, cols = df.shape
                 await update.message.reply_text(
                     f"✅ הקובץ עובד בהצלחה!\n\n"
@@ -185,7 +543,7 @@ class SimpleHebrewBot:
                     f"• 'דוח PDF מתקדם' - לדוח מקצועי בעברית! 🎯"
                 )
                 
-                # Показываем первые несколько строк (коротко)
+                # Show preview of first few rows
                 preview = df.head(2).to_string(index=False, max_cols=3)
                 if len(preview) > 1000:
                     preview = preview[:1000] + "..."
@@ -199,15 +557,18 @@ class SimpleHebrewBot:
             await update.message.reply_text("❌ שגיאה בעיבוד הקובץ. אנא נסה שוב.")
         
         finally:
-            # Очищаем временную папку
+            # Clean up temporary directory
             if 'temp_dir' in locals():
                 shutil.rmtree(temp_dir, ignore_errors=True)
     
     async def read_data_file(self, file_path: str, file_extension: str):
-        """קריאת קובץ נתונים"""
+        """
+        Read data files with support for multiple encodings and formats
+        Handles CSV with various encodings and Excel files
+        """
         try:
             if file_extension == '.csv':
-                # Пробуем разные кодировки
+                # Try different encodings for CSV files
                 encodings = ['utf-8', 'latin-1', 'cp1255', 'iso-8859-8']
                 for encoding in encodings:
                     try:
@@ -230,14 +591,18 @@ class SimpleHebrewBot:
             return None
     
     async def handle_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בהודעות טקסט פשוטות"""
+        """
+        Handle text messages - main navigation and feature routing
+        Routes user requests to appropriate analysis functions
+        """
         user_id = update.effective_user.id
         text = update.message.text
         
-        # Проверяем, есть ли пользователь в данных
+        # Initialize user data if not exists
         if user_id not in self.user_data:
             self.user_data[user_id] = {'data': None, 'file_name': None, 'analysis_done': False}
         
+        # Route to appropriate handlers based on user selection
         if text == '📊 ניתוח נתונים':
             await self.handle_analyze_data(update, context)
         
@@ -248,7 +613,7 @@ class SimpleHebrewBot:
             await self.handle_insights(update, context)
 
         elif text == '📄 דוח PDF':
-            # דוח PDF רגיל (ישן)
+            # Regular PDF report (legacy)
             if not self.has_data(user_id):
                 await update.message.reply_text("❌ אין נתונים לדוח! שלח קובץ תחילה.")
                 return
@@ -258,6 +623,8 @@ class SimpleHebrewBot:
             try:
                 df = self.user_data[user_id]['data']
                 numeric_cols = df.select_dtypes(include=[np.number]).columns
+                
+                # Basic analysis results for report
                 analysis_results = {
                     'basic_info': {
                         'shape': df.shape,
@@ -265,11 +632,12 @@ class SimpleHebrewBot:
                         'null_counts': df.isnull().sum().to_dict(),
                     }
                 }
-                # quick top correlations for report
+                
+                # Add correlation matrix if available
                 if len(numeric_cols) > 1:
                     analysis_results['correlation_matrix'] = df[numeric_cols].corr()
                 
-                # reuse last charts if exist; otherwise, build minimal hist for first numeric
+                # Reuse existing charts if available; otherwise create basic histogram
                 chart_dir = os.path.join(os.getcwd(), 'temp_charts')
                 chart_files = []
                 if os.path.isdir(chart_dir):
@@ -277,6 +645,7 @@ class SimpleHebrewBot:
                         if name.lower().endswith('.png'):
                             chart_files.append(os.path.join(chart_dir, name))
                 
+                # Create quick histogram if no charts exist
                 if not chart_files and len(numeric_cols) > 0:
                     import matplotlib.pyplot as plt
                     path = os.path.join(chart_dir, 'pdf_quick_hist.png')
@@ -287,6 +656,7 @@ class SimpleHebrewBot:
                     plt.close()
                     chart_files.append(path)
 
+                # Generate PDF report
                 out_path = os.path.join(os.getcwd(), 'analysis_report.pdf')
                 pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
                 
@@ -306,22 +676,22 @@ class SimpleHebrewBot:
                 await update.message.reply_text('❌ שגיאה ביצירת הדוח הרגיל')
 
         elif text == '📊 דוח PDF מתקדם':
-            # דוח PDF מתקדם (חדש ומשופר)
+            # Advanced PDF report (new and enhanced)
             if not self.has_data(user_id):
                 await update.message.reply_text("❌ אין נתונים לדוח מתקדם! שלח קובץ תחילה.")
                 return
             
-            await update.message.reply_text("🚀 יוצר דוח PDF מתקדם בעברית עם ניתוח מקיף, גרפים מקצועיים ותוכן מובטח בכל סעיף…")
+            await update.message.reply_text("🚀 יוצר דוח PDF מתקדם בעברית עם ניתוח מקיף וגרפים מקצועיים…")
             
             try:
                 df = self.user_data[user_id]['data']
                 file_name = self.user_data[user_id]['file_name']
                 
-                # יצירת שם קובץ מותאם
+                # Create customized filename
                 base_name = os.path.splitext(file_name)[0] if file_name else "נתונים"
                 out_path = os.path.join(os.getcwd(), f'דוח_מתקדם_{base_name}.pdf')
                 
-                # שימוש בפונקציה החדשה והמשופרת עם תוכן מובטח
+                # Use enhanced report generation function
                 pdf_path = generate_complete_data_report(df, out_path, include_charts=True)
                 
                 if pdf_path and os.path.exists(pdf_path):
@@ -330,30 +700,25 @@ class SimpleHebrewBot:
                             chat_id=update.effective_chat.id, 
                             document=f, 
                             filename=os.path.basename(pdf_path), 
-                            caption='🎉 דוח PDF מתקדם עם תוכן מובטח הוכן בהצלחה!\n\n'
+                            caption='🎉 דוח PDF מתקדם הוכן בהצלחה!\n\n'
                                    '✨ הדוח כולל:\n'
-                                   '• ניתוח מעמיק של הנתונים עם תוכן מובטח\n'
-                                   '• גרפים מקצועיים וויזואליזציות איכותיות\n'
-                                   '• תובנות ומסקנות אוטומטיות מפורטות\n'
-                                   '• המלצות מותאמות אישית עם הסברים\n'
-                                   '• ניתוח ערכים חריגים וקורלציות\n'
-                                   '• סיכום סטטיסטי מקיף\n'
-                                   '• עיצוב מקצועי בעברית מימין לשמאל\n'
-                                   '• תוכן מובטח בכל סעיף - אף סעיף לא יישאר ריק!'
+                                   '• ניתוח מעמיק של הנתונים\n'
+                                   '• גרפים מקצועיים וויזואליזציות\n'
+                                   '• תובנות ומסקנות אוטומטיות\n'
+                                   '• המלצות מותאמות אישית\n'
+                                   '• עיצוב מקצועי בעברית מימין לשמאל'
                         )
                     
-                    # הודעת מעקב
+                    # Follow-up message
                     await update.message.reply_text(
-                        "🎯 **דוח PDF מתקדם עם תוכן מובטח נוצר בהצלחה!**\n\n"
-                        "🔥 **חידושים בדוח החדש:**\n"
-                        "✅ תוכן מובטח בכל סעיף - אף סעיף לא נשאר ריק\n"
-                        "📊 ניתוח סטטיסטי מלא עם הסברים מפורטים\n"
-                        "📈 גרפים מקצועיים עם תיאורים בעברית\n"
-                        "🔍 זיהוי קורלציות וחריגים עם המלצות\n"
-                        "💡 תובנות עסקיות מותאמות אישית\n"
-                        "🎨 עיצוב מקצועי בעברית מימין לשמאל\n"
-                        "🛡️ עמידות מול נתונים בעייתיים\n\n"
-                        "🚀 זהו דוח מתקדם ומקצועי שמבטיח תוכן איכותי בכל מקרה!",
+                        "🎯 **דוח PDF מתקדם נוצר בהצלחה!**\n\n"
+                        "הדוח החדש כולל:\n"
+                        "📊 ניתוח סטטיסטי מלא\n"
+                        "📈 גרפים מקצועיים\n"
+                        "🔍 זיהוי קורלציות וחריגים\n"
+                        "💡 תובנות עסקיות\n"
+                        "🎨 עיצוב מקצועי בעברית\n\n"
+                        "זהו דוח מתקדם בהרבה מהדוח הרגיל! 🚀",
                         parse_mode=ParseMode.MARKDOWN
                     )
                     
@@ -386,6 +751,7 @@ class SimpleHebrewBot:
             await self.help_command(update, context)
         
         else:
+            # Default response for unrecognized messages
             await update.message.reply_text(
                 "לא הבנתי את ההודעה שלך. 🤔\n\n"
                 "אנא השתמש בכפתורים שלמטה או שלח /help לעזרה מפורטת.\n\n"
@@ -393,7 +759,15 @@ class SimpleHebrewBot:
             )
     
     async def handle_analyze_data(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בניתוח נתונים"""
+        """
+        Handle comprehensive data analysis request
+        Provides detailed statistical analysis including:
+        - Basic information (rows, columns, data types)
+        - Detailed statistics for numeric columns
+        - Categorical data analysis
+        - Data quality assessment
+        - Missing values analysis
+        """
         user_id = update.effective_user.id
         
         if not self.has_data(user_id):
@@ -408,17 +782,17 @@ class SimpleHebrewBot:
         try:
             df = self.user_data[user_id]['data']
             
-            # Базовый анализ
+            # Basic analysis header
             analysis_text = f"🔍 **ניתוח מפורט: {self.user_data[user_id]['file_name']}**\n\n"
             
-            # Основная информация
+            # Basic information section
             rows, cols = df.shape
             analysis_text += f"📊 **מידע בסיסי:**\n"
             analysis_text += f"• מספר שורות: {rows:,}\n"
             analysis_text += f"• מספר עמודות: {cols}\n"
             analysis_text += f"• שם קובץ: {self.user_data[user_id]['file_name']}\n\n"
             
-            # Информация о колонках
+            # Column information and data types
             analysis_text += f"**עמודות וטיפוסי נתונים:**\n"
             for i, col in enumerate(df.columns, 1):
                 col_type = str(df[col].dtype)
@@ -430,7 +804,7 @@ class SimpleHebrewBot:
                     analysis_text += f" - {null_count} ערכים חסרים ({null_percentage:.1f}%)"
                 analysis_text += f" - {unique_count} ערכים ייחודיים\n"
             
-            # Детальная статистика для числовых колонок
+            # Detailed statistics for numeric columns
             numeric_cols = df.select_dtypes(include=[np.number]).columns
             if len(numeric_cols) > 0:
                 analysis_text += f"\n📊 **סטטיסטיקה מספרית מפורטת:**\n"
@@ -447,11 +821,11 @@ class SimpleHebrewBot:
                     analysis_text += f"• Q1: {Q1:.2f}\n"
                     analysis_text += f"• Q3: {Q3:.2f}\n"
             
-            # Анализ категориальных колонок
+            # Categorical data analysis
             categorical_cols = df.select_dtypes(include=['object']).columns
             if len(categorical_cols) > 0:
                 analysis_text += f"\n**ניתוח קטגוריות:**\n"
-                for col in categorical_cols[:3]:  # Только первые 3
+                for col in categorical_cols[:3]:  # Limit to first 3 columns
                     value_counts = df[col].value_counts()
                     most_common = value_counts.head(3)
                     analysis_text += f"• {col}:\n"
@@ -459,13 +833,13 @@ class SimpleHebrewBot:
                         percentage = (count / len(df)) * 100
                         analysis_text += f"  - {val}: {count} ({percentage:.1f}%)\n"
             
-            # Проверка на дубликаты
+            # Duplicate analysis
             duplicates = df.duplicated().sum()
             if duplicates > 0:
                 analysis_text += f"\n**⚠️ אזהרות:**\n"
                 analysis_text += f"• נמצאו {duplicates} שורות כפולות\n"
             
-            # Анализ качества данных
+            # Data quality analysis
             total_cells = len(df) * len(df.columns)
             total_nulls = df.isnull().sum().sum()
             if total_nulls > 0:
@@ -481,7 +855,7 @@ class SimpleHebrewBot:
             
             self.user_data[user_id]['analysis_done'] = True
             
-            # Разбиваем длинное сообщение
+            # Split long messages into parts
             if len(analysis_text) > 4000:
                 parts = [analysis_text[i:i+4000] for i in range(0, len(analysis_text), 4000)]
                 for i, part in enumerate(parts):
@@ -492,6 +866,7 @@ class SimpleHebrewBot:
             else:
                 await update.message.reply_text(analysis_text, parse_mode=ParseMode.MARKDOWN)
             
+            # Next steps message
             await update.message.reply_text(
                 "✅ הניתוח הושלם!\n\n"
                 "**מה עכשיו?**\n"
@@ -506,7 +881,15 @@ class SimpleHebrewBot:
             await update.message.reply_text("❌ שגיאה בניתוח הנתונים")
     
     async def handle_charts(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בתרשימים - יצירת תרשימים מקצועיים ומתקדמים"""
+        """
+        Handle chart generation request - creates professional charts using enhanced generator
+        Uses the embedded enhanced chart generator to create comprehensive visualizations:
+        - Statistical summary tables
+        - Various chart types (bar, histogram, scatter, box, violin, etc.)
+        - Correlation analysis
+        - Time series analysis
+        - Missing value visualization
+        """
         user_id = update.effective_user.id
         
         if not self.has_data(user_id):
@@ -516,217 +899,104 @@ class SimpleHebrewBot:
             )
             return
         
-        await update.message.reply_text("📈 יוצר תרשימים מקצועיים...")
+        await update.message.reply_text("📈 יוצר תרשימים מקצועיים עם מחולל משופר...")
         
         try:
             df = self.user_data[user_id]['data']
-            chart_files = []
-            chart_insights = {}
-            chart_next_steps = {}
             
-            # Создаем папку для графиков
-            temp_charts_dir = tempfile.mkdtemp()
+            # Use enhanced chart generator
+            enhanced_generator = get_enhanced_chart_generator()
             
-            # Настройка стиля для профессиональных графиков
-            plt.style.use('seaborn-v0_8')
-            sns.set_palette("husl")
-            
-            # 1. Гистограммы с улучшенным дизайном
+            # Create basic analysis for charts
+            analysis_results = {}
             numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                for col in numeric_cols[:3]:  # Первые 3 числовые колонки
-                    plt.figure(figsize=(12, 8))
-                    
-                    # Создаем подграфики
-                    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 10))
-                    
-                    # Гистограмма
-                    ax1.hist(df[col].dropna(), bins=30, alpha=0.7, color='skyblue', 
-                            edgecolor='navy', linewidth=1.2)
-                    ax1.set_title(f'היסטוגרמה של {col}', fontsize=16, fontweight='bold', pad=20)
-                    ax1.set_xlabel(col, fontsize=12, fontweight='bold')
-                    ax1.set_ylabel('תדירות', fontsize=12, fontweight='bold')
-                    ax1.grid(True, alpha=0.3, linestyle='--')
-                    ax1.axvline(df[col].mean(), color='red', linestyle='--', linewidth=2, 
-                               label=f'ממוצע: {df[col].mean():.2f}')
-                    ax1.axvline(df[col].median(), color='green', linestyle='--', linewidth=2, 
-                               label=f'חציון: {df[col].median():.2f}')
-                    ax1.legend(fontsize=10)
-                    
-                    # Box plot
-                    ax2.boxplot(df[col].dropna(), patch_artist=True, 
-                               boxprops=dict(facecolor='lightblue', alpha=0.7),
-                               medianprops=dict(color='red', linewidth=2))
-                    ax2.set_title(f'Box Plot של {col}', fontsize=14, fontweight='bold')
-                    ax2.set_ylabel(col, fontsize=12, fontweight='bold')
-                    ax2.grid(True, alpha=0.3, linestyle='--')
-                    
-                    plt.tight_layout()
-                    chart_path = os.path.join(temp_charts_dir, f'histogram_box_{col}.png')
-                    plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
-                    plt.close()
-                    chart_files.append(chart_path)
-
-                    series = df[col].dropna()
-                    if not series.empty:
-                        mean_v = series.mean()
-                        median_v = series.median()
-                        std_v = series.std()
-                        skew_v = series.skew()
-                        q1 = series.quantile(0.25)
-                        q3 = series.quantile(0.75)
-                        iqr = q3 - q1
-                        lower = q1 - 1.5 * iqr
-                        upper = q3 + 1.5 * iqr
-                        outliers = ((series < lower) | (series > upper)).sum()
-                        out_pct = (outliers / len(series)) * 100.0
-                        chart_insights[chart_path] = f"{col}: ממוצע {mean_v:.2f}, חציון {median_v:.2f}, סטיית תקן {std_v:.2f}, הטיה {skew_v:.2f}. חריגים: {out_pct:.1f}%"
-                        chart_next_steps[chart_path] = (
-                            "מה הלאה:\n"
-                            "• בדיקת חריגים והשפעתם על המודלים\n"
-                            "• אם |הטיה| גבוהה — שקלו טרנספורמציית Log/Box-Cox\n"
-                            "• השוואת ההתפלגות בין קבוצות (A/B, סגמנטים)"
-                        )
-            
-            # 2. Корреляционная матрица
             if len(numeric_cols) > 1:
-                plt.figure(figsize=(12, 10))
-                correlation_matrix = df[numeric_cols].corr()
-                
-                # Создаем маску для верхнего треугольника
-                mask = np.triu(np.ones_like(correlation_matrix, dtype=bool))
-                
-                # Создаем heatmap
-                sns.heatmap(correlation_matrix, mask=mask, annot=True, cmap='RdYlBu_r', 
-                           center=0, square=True, linewidths=0.5, cbar_kws={"shrink": 0.8},
-                           fmt='.3f', annot_kws={'size': 10, 'weight': 'bold'})
-                
-                plt.title('מטריצת קורלציה - Correlation Matrix', fontsize=16, fontweight='bold', pad=20)
-                plt.tight_layout()
-                
-                chart_path = os.path.join(temp_charts_dir, 'correlation_matrix.png')
-                plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
-                plt.close()
-                chart_files.append(chart_path)
-
-                # Insights
-                pairs = []
-                cols_list = list(numeric_cols)
-                for i in range(len(cols_list)):
-                    for j in range(i+1, len(cols_list)):
-                        val = correlation_matrix.loc[cols_list[i], cols_list[j]]
-                        if not pd.isna(val):
-                            pairs.append((cols_list[i], cols_list[j], float(val)))
-                pairs.sort(key=lambda x: abs(x[2]), reverse=True)
-                top_pairs = ', '.join([f"{a}↔{b} ({c:.2f})" for a, b, c in pairs[:3]]) if pairs else "אין קשרים חזקים"
-                chart_insights[chart_path] = f"זוגות קורלציה בולטים: {top_pairs}"
-                chart_next_steps[chart_path] = (
-                    "מה הלאה:\n• בדיקת רגרסיה לזוגות חזקים\n• טיפול במולטיקולינאריות לפני ML"
-                )
+                analysis_results['correlation_matrix'] = df[numeric_cols].corr()
             
-            # 3. Столбчатые диаграммы для категориальных данных
-            categorical_cols = df.select_dtypes(include=['object']).columns
-            if len(categorical_cols) > 0:
-                for col in categorical_cols[:2]:
-                    series = df[col].dropna()
-                    if series.empty:
-                        continue
-                    value_counts = series.value_counts()
-
-                    # Detect high-cardinality columns and aggregate tail into 'Other'
-                    unique_ratio = series.nunique() / len(series)
-                    top_n = 10 if (unique_ratio > 0.3 or len(value_counts) > 12) else 15
-                    value_counts = value_counts.sort_values(ascending=False)
-                    others_sum = value_counts.iloc[top_n:].sum()
-                    value_counts = value_counts.iloc[:top_n]
-                    if others_sum > 0:
-                        value_counts['אחר'] = others_sum
-
-                    non_null_total = value_counts.sum()
-
-                    plt.figure(figsize=(14, 8))
-                    bars = plt.bar(range(len(value_counts)), value_counts.values,
-                                 color=plt.cm.Set3(np.linspace(0, 1, len(value_counts))),
-                                 alpha=0.8, edgecolor='black', linewidth=0.5)
-
-                    # Добавляем значения на столбцы
-                    for i, (bar, value) in enumerate(zip(bars, value_counts.values)):
-                        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01*max(value_counts.values),
-                                f'{value}', ha='center', va='bottom', fontweight='bold', fontsize=10)
-
-                    plt.title(f'התפלגות {col}', fontsize=16, fontweight='bold', pad=20)
-                    plt.xlabel(col, fontsize=12, fontweight='bold')
-                    plt.ylabel('מספר', fontsize=12, fontweight='bold')
-                    plt.xticks(range(len(value_counts)), value_counts.index, rotation=45, ha='right')
-                    plt.grid(True, alpha=0.3, linestyle='--', axis='y')
-
-                    # Добавляем процентные метки
-                    for i, (bar, value) in enumerate(zip(bars, value_counts.values)):
-                        percentage = (value / non_null_total) * 100 if non_null_total else 0
-                        plt.text(bar.get_x() + bar.get_width()/2, bar.get_height()/2,
-                                f'{percentage:.1f}%', ha='center', va='center',
-                                fontweight='bold', color='white', fontsize=9)
-
-                    plt.tight_layout()
-                    chart_path = os.path.join(temp_charts_dir, f'bar_chart_{col}.png')
-                    plt.savefig(chart_path, dpi=300, bbox_inches='tight', facecolor='white')
-                    plt.close()
-                    chart_files.append(chart_path)
-
-                    top3 = value_counts.head(3)
-                    coverage = (top3.sum() / non_null_total) * 100 if non_null_total else 0
-                    dom = ', '.join([f"{k} ({v/non_null_total*100:.1f}%)" for k, v in top3.items()])
-                    chart_insights[chart_path] = f"{col}: קטגוריות מובילות — {dom}. כיסוי טופ‑3: {coverage:.1f}%"
-                    chart_next_steps[chart_path] = (
-                        "מה הלאה:\n"
-                        "• ניתוח עומק לפי קטגוריות מובילות\n"
-                        "• המרת קטגוריות דלות נתונים ל-'אחר'\n"
-                        "• בדיקת קשר ליעדי המרה/הכנסה"
-                    )
+            # Generate comprehensive dashboard with all enhanced chart types
+            chart_files = enhanced_generator.create_comprehensive_dashboard(df, analysis_results)
             
-            # Отправляем графики
+            # Send charts to user
             if chart_files:
-                await update.message.reply_text(f"✅ נוצרו {len(chart_files)} תרשימים מקצועיים!")
+                await update.message.reply_text(f"✅ נוצרו {len(chart_files)} תרשימים מקצועיים עם המחולל המשופר!")
                 
-                # Группируем графики по типам для лучшей организации
-                chart_types = {
-                    'histogram_box': '📊 היסטוגרמות ו-Box Plots',
-                    'bar_chart': '📈 גרפים עמודות',
-                    'correlation_matrix': '🔗 מטריצת קורלציה'
+                # Enhanced chart types mapping (Hebrew + English)
+                enhanced_chart_types = {
+                    'statistical_summary': '📋 סיכום סטטיסטי',
+                    'bar_chart': '📊 תרשים עמודות משופר',
+                    'histogram': '📊 היסטוגרמה עם סטטיסטיקות',
+                    'scatter_plot': '🔵 תרשים פיזור עם מגמה',
+                    'box_plot': '📦 תרשים קופסה עם נתונים',
+                    'pie_chart': '🥧 תרשים עוגה עם מקרא',
+                    'violin_plot': '🎻 תרשים כינור',
+                    'correlation_heatmap': '🔥 מפת קורלציה',
+                    'area_chart': '🏔️ תרשים שטח',
+                    'radar_chart': '📡 תרשים רדאר',
+                    'treemap': '🌳 מפת עץ',
+                    'pairplot': '🔗 זוגות משתנים (Pairplot)',
+                    'missing_values': '❗ ערכים חסרים לפי עמודה',
+                    'line_timeseries': '📈 ממוצע יומי',
+                    'top_categories_': '📊 קטגוריות מובילות'
+                }
+                enhanced_chart_types_en = {
+                    'statistical_summary': 'Statistical summary',
+                    'bar_chart': 'Bar chart',
+                    'histogram': 'Histogram with stats',
+                    'scatter_plot': 'Scatter plot with trend',
+                    'box_plot': 'Box plot',
+                    'pie_chart': 'Pie chart',
+                    'violin_plot': 'Violin plot',
+                    'correlation_heatmap': 'Correlation heatmap',
+                    'area_chart': 'Area chart',
+                    'radar_chart': 'Radar chart',
+                    'treemap': 'Treemap',
+                    'pairplot': 'Pairplot',
+                    'missing_values': 'Missing values by column',
+                    'line_timeseries': 'Daily average',
+                    'top_categories_': 'Top categories'
                 }
                 
+                # Send each chart with appropriate caption
                 for i, chart_file in enumerate(chart_files):
                     try:
                         with open(chart_file, 'rb') as img_file:
-                            # Определяем тип графика по имени файла
-                            chart_type = "תרשים מקצועי"
-                            for key, value in chart_types.items():
-                                if key in chart_file:
-                                    chart_type = value
+                            # Identify chart type from filename
+                            filename = os.path.basename(chart_file)
+                            chart_type_he = "תרשים מקצועי משופר"
+                            chart_type_en = "Professional chart"
+                            for key, value in enhanced_chart_types.items():
+                                if key in filename:
+                                    chart_type_he = value
+                                    chart_type_en = enhanced_chart_types_en.get(key, chart_type_en)
                                     break
                             
-                            insight_text = chart_insights.get(chart_file, "")
-                            caption = f"📊 {chart_type}\n{insight_text}".strip()
-                            if len(caption) > 900:
-                                caption = caption[:900] + "…"
+                            caption = (
+                                f"{chart_type_he}\n{chart_type_en}\n\n"
+                                f"✨ נוצר עם מחולל התרשימים המשופר\n"
+                                f"🎨 כולל תוויות בעברית ועיצוב מקצועי"
+                            )
+                            
                             await context.bot.send_photo(
                                 chat_id=update.effective_chat.id,
                                 photo=img_file,
                                 caption=caption
                             )
-                            next_steps = chart_next_steps.get(chart_file)
-                            if next_steps:
-                                await context.bot.send_message(chat_id=update.effective_chat.id, text=next_steps)
                     except Exception as e:
-                        logger.error(f"Error sending chart {chart_file}: {e}")
+                        logger.error(f"Error sending enhanced chart {chart_file}: {e}")
                         await update.message.reply_text(f"❌ שגיאה בשליחת תרשים {i+1}")
                 
+                # Final summary message
                 await update.message.reply_text(
-                    "🎉 כל התרשימים נשלחו!\n\n"
-                    "💡 **סוגי התרשימים שנוצרו:**\n"
-                    "• 📊 היסטוגרמות עם Box Plots\n"
-                    "• 📈 גרפים עמודות עם אחוזים\n"
-                    "• 🔗 מטריצת קורלציה מתקדמת\n\n"
+                    "🎉 **כל התרשימים המשופרים נשלחו!**\n\n"
+                    "💡 **התרשימים החדשים כוללים:**\n"
+                    "• 📊 תרשימי עמודות עם תוויות בעברית\n"
+                    "• 📈 היסטוגרמות עם עקומות צפיפות\n"
+                    "• 🔵 תרשימי פיזור עם קווי מגמה\n"
+                    "• 📦 תרשימי קופסה עם סטטיסטיקות\n"
+                    "• 🥧 תרשימי עוגה עם מקרא מפורט\n"
+                    "• 🎻 תרשימי כינור מתקדמים\n"
+                    "• 🔥 מפות קורלציה משופרות\n"
+                    "• 🏔️ תרשימי שטח מוערמים\n\n"
                     "**מה עכשיו?**\n"
                     "💡 'תובנות והמלצות' - לקבלת תובנות עסקיות\n"
                     "📊 'דוח PDF מתקדם' - לדוח מקצועי עם כל הגרפים! 🎯"
@@ -735,16 +1005,19 @@ class SimpleHebrewBot:
                 await update.message.reply_text("❌ לא ניתן ליצור תרשימים מהנתונים הנוכחיים.")
             
         except Exception as e:
-            logger.error(f"Error creating charts: {e}")
-            await update.message.reply_text("❌ שגיאה ביצירת התרשימים")
-        
-        finally:
-            # Очищаем временные файлы
-            if 'temp_charts_dir' in locals():
-                shutil.rmtree(temp_charts_dir, ignore_errors=True)
+            logger.error(f"Error creating enhanced charts: {e}")
+            await update.message.reply_text("❌ שגיאה ביצירת התרשימים המשופרים")
     
     async def handle_insights(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """טיפול בתובנות והמלצות"""
+        """
+        Handle insights and recommendations request
+        Provides advanced insights including:
+        - Correlation analysis
+        - Outlier detection
+        - Data quality recommendations
+        - Business insights
+        - Further analysis suggestions
+        """
         user_id = update.effective_user.id
         
         if not self.has_data(user_id):
@@ -760,13 +1033,13 @@ class SimpleHebrewBot:
             df = self.user_data[user_id]['data']
             insights_text = "💡 **תובנות מתקדמות והמלצות:**\n\n"
             
-            # 1. Анализ корреляций
+            # 1. Correlation Analysis
             numeric_cols = df.select_dtypes(include=[np.number]).columns
             if len(numeric_cols) > 1:
                 insights_text += "**🔗 ניתוח קורלציות:**\n"
                 correlation_matrix = df[numeric_cols].corr()
                 
-                # Находим топ-5 корреляций
+                # Find top 5 correlations
                 correlations = []
                 for i in range(len(numeric_cols)):
                     for j in range(i+1, len(numeric_cols)):
@@ -775,7 +1048,7 @@ class SimpleHebrewBot:
                         if not pd.isna(corr_value):
                             correlations.append((col1, col2, abs(corr_value)))
                 
-                # Сортируем по силе корреляции
+                # Sort by correlation strength
                 correlations.sort(key=lambda x: x[2], reverse=True)
                 
                 for i, (col1, col2, corr_abs) in enumerate(correlations[:5]):
@@ -784,7 +1057,7 @@ class SimpleHebrewBot:
                 
                 insights_text += "\n"
             
-            # 2. Анализ выбросов
+            # 2. Outlier Analysis
             if len(numeric_cols) > 0:
                 insights_text += "**🔍 זיהוי אנומליות:**\n"
                 for col in numeric_cols[:3]:
@@ -806,10 +1079,10 @@ class SimpleHebrewBot:
                 
                 insights_text += "\n"
             
-            # 3. Рекомендации по улучшению данных
+            # 3. Data Quality Recommendations
             insights_text += "**💡 המלצות לשיפור הנתונים:**\n"
             
-            # Проверка на пропущенные значения
+            # Check for missing values
             total_nulls = df.isnull().sum().sum()
             total_cells = len(df) * len(df.columns)
             if total_nulls > 0:
@@ -822,7 +1095,7 @@ class SimpleHebrewBot:
                 else:
                     insights_text += f"  - ✅ אחוז נמוך - נתונים באיכות טובה\n"
             
-            # Проверка на дубликаты
+            # Check for duplicates
             duplicates = df.duplicated().sum()
             if duplicates > 0:
                 duplicate_percentage = (duplicates / len(df)) * 100
@@ -831,11 +1104,11 @@ class SimpleHebrewBot:
             
             insights_text += "\n"
             
-            # 4. Бизнес-инсайты
+            # 4. Business Insights
             insights_text += "**🚀 תובנות עסקיות:**\n"
             
             if len(numeric_cols) > 0:
-                # Находим колонку с максимальной вариативностью
+                # Find column with maximum variability
                 max_var_col = numeric_cols[0]
                 max_variance = df[max_var_col].var()
                 for col in numeric_cols:
@@ -846,7 +1119,7 @@ class SimpleHebrewBot:
                 insights_text += f"• העמודה {max_var_col} מראה את השונות הגבוהה ביותר\n"
                 insights_text += f"  - זה עשוי להצביע על הזדמנויות או סיכונים עסקיים\n"
             
-            # 5. Рекомендации по дальнейшему анализу
+            # 5. Recommendations for further analysis
             insights_text += "\n**🎯 המלצות לניתוח נוסף:**\n"
             if len(numeric_cols) > 1:
                 insights_text += "• ניתוח רגרסיה לזיהוי גורמים משפיעים\n"
@@ -855,7 +1128,7 @@ class SimpleHebrewBot:
                 insights_text += "• ניתוח ANOVA להשוואה בין קבוצות\n"
                 insights_text += "• ניתוח Chi-Square לבדיקת קשרים\n"
             
-            # Разбиваем длинное сообщение
+            # Split long messages into parts
             if len(insights_text) > 4000:
                 parts = [insights_text[i:i+4000] for i in range(0, len(insights_text), 4000)]
                 for i, part in enumerate(parts):
@@ -866,6 +1139,7 @@ class SimpleHebrewBot:
             else:
                 await update.message.reply_text(insights_text, parse_mode=ParseMode.MARKDOWN)
             
+            # Final recommendations message
             await update.message.reply_text(
                 "🎯 **התובנות וההמלצות הושלמו!**\n\n"
                 "עכשיו יש לך תמונה מלאה של הנתונים שלך.\n\n"
@@ -880,46 +1154,36 @@ class SimpleHebrewBot:
             await update.message.reply_text("❌ שגיאה ביצירת התובנות")
     
     def run(self):
-        """הפעלת הבוט"""
+        """
+        Start the bot - main execution method
+        Runs the Telegram bot in polling mode to continuously check for new messages
+        """
         logger.info("Starting Simple Hebrew Bot...")
         self.application.run_polling()
 
+# MAIN EXECUTION SECTION
 def main():
-    """הפונקציה הראשית"""
-    
-    # Get bot token from environment variable
-    BOT_TOKEN = os.getenv("BOT_TOKEN")
+    """
+    Main function - entry point of the application
+    Gets bot token from environment variables and starts the bot
+    """
+    import os
+    BOT_TOKEN = os.getenv('BOT_TOKEN')
     
     if not BOT_TOKEN:
-        print("❌ ERROR: BOT_TOKEN environment variable not set!")
-        print("📱 Get your token from @BotFather in Telegram")
-        print("🔧 Set the BOT_TOKEN environment variable:")
-        print("   export BOT_TOKEN='your_bot_token_here'  # Linux/Mac")
-        print("   $env:BOT_TOKEN='your_bot_token_here'    # Windows PowerShell")
+        logger.error("BOT_TOKEN environment variable not found!")
+        print("Please set the BOT_TOKEN environment variable with your Telegram bot token.")
         return
     
     try:
-        print("Starting Simple Hebrew Bot with Advanced PDF Generation...")
+        # Create and start the bot
         bot = SimpleHebrewBot(BOT_TOKEN)
-        print("Bot created successfully!")
-        print("Features available:")
-        print("• Basic data analysis")
-        print("• Professional charts generation")
-        print("• Advanced insights and recommendations")
-        print("• Regular PDF reports (old version)")
-        print("• ADVANCED PDF reports with Hebrew RTL support (NEW!)")
-        print("• Hebrew text display from right to left")
-        print("• Professional charts in PDF")
-        print("• Comprehensive data analysis")
-        print("")
-        print("Starting bot...")
-        print("Now find the bot in Telegram and send /start")
-        print("Upload CSV/Excel files and try the new 'דוח PDF מתקדם' button!")
-        
+        logger.info("Bot initialized successfully")
         bot.run()
-        
+    except KeyboardInterrupt:
+        logger.info("Bot stopped by user")
     except Exception as e:
-        print(f"Error starting bot: {e}")
+        logger.error(f"Error running bot: {e}")
         import traceback
         traceback.print_exc()
 
